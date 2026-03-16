@@ -25,6 +25,7 @@ description: |
 {SKILL_DIR}/scripts/crosstab.py
 {SKILL_DIR}/scripts/text_extract.py
 {SKILL_DIR}/scripts/text_export.py
+{SKILL_DIR}/scripts/report_export.py
 ```
 
 其中 `{SKILL_DIR}` 是本 skill 所在目录的绝对路径。
@@ -247,7 +248,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 
 ### 阶段 5：生成综合报告
 
-**目标**：输出 Markdown 摘要报告 + 确认所有 Excel 已生成。
+**目标**：输出 Markdown 摘要报告（默认），支持按用户需求转换为 TXT / Excel / Word 格式。
 
 **Markdown 报告结构**：
 
@@ -292,6 +293,27 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 - `{文件名}_基础统计.xlsx` — 基础统计详细数据
 - `{文件名}_交叉分析.xlsx` — 交叉分析详细数据（如有）
 - `{文件名}_文本分析.xlsx` — 文本分析详细数据（如有）
+
+**报告格式转换**（按需）：
+如果用户要求输出 Word / Excel / TXT 格式的报告（如"请给我一份 Word 报告"、"导出成 docx"），
+在生成 Markdown 报告后，调用格式转换脚本：
+
+```bash
+# 转 Word（.docx）
+python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format docx
+
+# 转 Excel（.xlsx）
+python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format xlsx
+
+# 转纯文本（.txt）
+python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format txt
+
+# 也可指定输出路径
+python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format docx --output "自定义路径.docx"
+```
+
+支持格式：`md`（默认）、`txt`、`xlsx`、`docx`（Word）。
+Word 格式需要额外依赖 `python-docx`，如环境缺失，先执行 `pip install python-docx`。
 
 **全量文本分析询问**（仅在阶段 4 使用了抽样分析时触发）：
 报告全部生成完毕后，使用 ask_user_question 询问用户：
