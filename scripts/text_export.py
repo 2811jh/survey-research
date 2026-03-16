@@ -358,18 +358,24 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
 # ========================================================================= #
 
 def export_text_report(results: list, output_path: str,
-                       file_path: str = None, sheet_name=0) -> dict:
+                       file_path: str = None, sheet_name=0,
+                       sample_n: int = 300) -> dict:
     """
     将文本分析结果导出为专业 Excel 报告。
 
     当 details 为空但提供了 file_path 时，自动从原始数据中提取文本，
     基于 dimensions 关键词做自动标注，生成逐条明细。
 
+    sample_n 控制逐条明细的行数：
+      - sample_n > 0: 仅标注 sample_n 条（与 AI 编码的抽样一致），总结概览使用 AI 的维度统计
+      - sample_n == 0: 全量标注，并根据全量标注结果重新统计维度 count/percentage
+
     Args:
         results: 分析结果列表
         output_path: 输出文件路径
         file_path: 原始数据文件路径（可选，用于自动标注）
         sheet_name: 工作表名或编号（默认 0）
+        sample_n: 明细行数限制（默认 300，0=全量）
 
     Returns:
         {"status": "success", "output_path": str, "sheets": [str]}
@@ -425,7 +431,27 @@ def export_text_report(results: list, output_path: str,
                     if "error" not in extract_result:
                         all_texts = extract_result.get("texts", [])
                         if all_texts:
-                            details = _auto_label_texts(all_texts, dimensions)
+                            if sample_n > 0 and len(all_texts) > sample_n:
+                                # 抽样模式：只标注 sample_n 条，总结概览使用 AI 原始统计
+                                import random
+                                sampled_texts = random.sample(all_texts, sample_n)
+                                details = _auto_label_texts(sampled_texts, dimensions)
+                            else:
+                                # 全量模式：标注全部文本，并重新统计维度 count/percentage
+                                details = _auto_label_texts(all_texts, dimensions)
+                                # 根据全量标注结果重新计算维度统计
+                                dim_counts = {}
+                                for d in details:
+                                    for label in d["labels"].split(", "):
+                                        label = label.strip()
+                                        if label and label != "其他":
+                                            dim_counts[label] = dim_counts.get(label, 0) + 1
+                                total_labeled = len(details)
+                                for dim in dimensions:
+                                    name = dim.get("name", "")
+                                    count = dim_counts.get(name, 0)
+                                    dim["count"] = count
+                                    dim["percentage"] = f"{count / total_labeled * 100:.1f}%" if total_labeled > 0 else "0%"
                             question_data["details"] = details
                             auto_labeled_count += len(details)
 
@@ -461,6 +487,8 @@ def main():
     parser.add_argument("--file_path", default=None,
                         help="原始数据文件路径（可选）。当 details 为空时，从此文件提取文本并自动标注")
     parser.add_argument("--sheet_name", default="0", help="工作表名或编号（默认 0）")
+    parser.add_argument("--sample_n", type=int, default=300,
+                        help="逐条明细行数限制（默认 300，0=全量标注并重新统计维度）")
     args = parser.parse_args()
 
     # 解析 sheet_name
@@ -495,7 +523,8 @@ def main():
     try:
         result = export_text_report(results, args.output_path,
                                     file_path=args.file_path,
-                                    sheet_name=sheet_name)
+                                    sheet_name=sheet_name,
+                                    sample_n=args.sample_n)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except Exception as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
