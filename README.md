@@ -14,8 +14,6 @@
 npx skills add 2811jh/survey-research
 ```
 
-> ⚠️ **注意**：`npx skills` 会将 skill 安装到 `~/.agents/skills/` 目录。如果你的 Agent（如 Claude Code）使用的是 `~/.claude/skills/` 目录，请使用上方的手动安装方式。
-
 ```bash
 # 指定 Agent
 npx skills add 2811jh/survey-research -a claude-code
@@ -33,6 +31,8 @@ npx skills update    # 更新
 npx skills remove survey-research  # 卸载
 ```
 ### 手动安装
+
+> ⚠️ **注意**：`npx skills` 会将 skill 安装到 `~/.agents/skills/` 目录。如果你的 Agent（如 Claude Code）使用的是 `~/.claude/skills/` 目录，请使用下方的手动安装方式。
 
 如果你使用的是 **Claude Code / CodeMaker**，直接通过 Git 安装到原生 skills 目录：
 
