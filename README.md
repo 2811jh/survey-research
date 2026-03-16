@@ -28,6 +28,36 @@ npx skills add 2811jh/survey-research -g
 npx skills add 2811jh/survey-research --all
 ```
 
+> ⚠️ **注意**：`npx skills` 会将 skill 安装到 `~/.agents/skills/` 目录。如果你的 Agent（如 Claude Code）使用的是 `~/.claude/skills/` 目录，请使用下方的手动安装方式。
+
+### 手动安装（推荐）
+
+如果你使用的是 **Claude Code / CodeMaker**，建议直接通过 Git 安装到原生 skills 目录：
+
+```bash
+# macOS / Linux
+git clone https://github.com/2811jh/survey-research.git ~/.claude/skills/survey-research
+
+# Windows
+git clone https://github.com/2811jh/survey-research.git "%USERPROFILE%\.claude\skills\survey-research"
+```
+
+如果你使用的是 **Cursor / Cline / Codex** 等其他 Agent：
+
+```bash
+# macOS / Linux
+git clone https://github.com/2811jh/survey-research.git ~/.agents/skills/survey-research
+
+# Windows
+git clone https://github.com/2811jh/survey-research.git "%USERPROFILE%\.agents\skills\survey-research"
+```
+
+更新到最新版本：
+
+```bash
+cd ~/.claude/skills/survey-research && git pull
+```
+
 ### 其他管理命令
 
 ```bash
