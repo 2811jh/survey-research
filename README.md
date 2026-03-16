@@ -2,6 +2,78 @@
 
 > 问卷研究全流程自动化分析 Skill —— 基础统计 + 交叉分析 + 归纳式文本分析 + 多格式报告
 
+---
+
+## ⚡ 安装
+
+### 通过 npx 安装 （cmd中一键安装）
+
+需要 [Node.js](https://nodejs.org/) >= 18
+
+```bash
+npx skills add 2811jh/survey-research
+```
+
+> ⚠️ **注意**：`npx skills` 会将 skill 安装到 `~/.agents/skills/` 目录。如果你的 Agent（如 Claude Code）使用的是 `~/.claude/skills/` 目录，请使用上方的手动安装方式。
+
+```bash
+# 指定 Agent
+npx skills add 2811jh/survey-research -a claude-code
+
+# 全局安装
+npx skills add 2811jh/survey-research -g
+
+# 安装到所有 Agent
+npx skills add 2811jh/survey-research --all
+
+# 其他管理命令
+npx skills list      # 查看已安装
+npx skills check     # 检查更新
+npx skills update    # 更新
+npx skills remove survey-research  # 卸载
+```
+### 手动安装
+
+如果你使用的是 **Claude Code / CodeMaker**，直接通过 Git 安装到原生 skills 目录：
+
+```bash
+# macOS / Linux
+git clone https://github.com/2811jh/survey-research.git ~/.claude/skills/survey-research
+
+# Windows
+git clone https://github.com/2811jh/survey-research.git "%USERPROFILE%\.claude\skills\survey-research"
+```
+
+如果你使用的是 **Cursor / Cline / Codex** 等其他 Agent：
+
+```bash
+# macOS / Linux
+git clone https://github.com/2811jh/survey-research.git ~/.agents/skills/survey-research
+
+# Windows
+git clone https://github.com/2811jh/survey-research.git "%USERPROFILE%\.agents\skills\survey-research"
+```
+
+更新到最新版本：
+
+```bash
+cd ~/.claude/skills/survey-research && git pull
+```
+
+---
+
+## � 环境要求
+
+- **Python 3.8+**（用于执行分析脚本）
+- **Python 依赖**：`pandas`、`numpy`、`openpyxl`（Word 报告额外需要 `python-docx`）
+
+```bash
+pip install pandas numpy openpyxl python-docx
+```
+
+---
+
+
 ## 一、这是什么？
 
 这是一个 🤖 **AI 驱动的问卷全流程分析工具**——从基础统计到交叉分析到文本编码，一句话搞定。
@@ -99,77 +171,6 @@ Markdown / Word / Excel / TXT，**想要什么格式就什么格式**。
 > 从 13,000 条问卷数据到一份完整的分析报告，全程自动化，中间零操作。  
 > 把时间花在**读洞察、做决策**上，而不是花在拉表格、贴标签上。
 
----
-
-## ⚡ 安装
-
-### 手动安装（推荐）
-
-如果你使用的是 **Claude Code / CodeMaker**，直接通过 Git 安装到原生 skills 目录：
-
-```bash
-# macOS / Linux
-git clone https://github.com/2811jh/survey-research.git ~/.claude/skills/survey-research
-
-# Windows
-git clone https://github.com/2811jh/survey-research.git "%USERPROFILE%\.claude\skills\survey-research"
-```
-
-如果你使用的是 **Cursor / Cline / Codex** 等其他 Agent：
-
-```bash
-# macOS / Linux
-git clone https://github.com/2811jh/survey-research.git ~/.agents/skills/survey-research
-
-# Windows
-git clone https://github.com/2811jh/survey-research.git "%USERPROFILE%\.agents\skills\survey-research"
-```
-
-更新到最新版本：
-
-```bash
-cd ~/.claude/skills/survey-research && git pull
-```
-
-### 通过 npx 安装
-
-需要 [Node.js](https://nodejs.org/) >= 18
-
-```bash
-npx skills add 2811jh/survey-research
-```
-
-> ⚠️ **注意**：`npx skills` 会将 skill 安装到 `~/.agents/skills/` 目录。如果你的 Agent（如 Claude Code）使用的是 `~/.claude/skills/` 目录，请使用上方的手动安装方式。
-
-```bash
-# 指定 Agent
-npx skills add 2811jh/survey-research -a claude-code
-
-# 全局安装
-npx skills add 2811jh/survey-research -g
-
-# 安装到所有 Agent
-npx skills add 2811jh/survey-research --all
-
-# 其他管理命令
-npx skills list      # 查看已安装
-npx skills check     # 检查更新
-npx skills update    # 更新
-npx skills remove survey-research  # 卸载
-```
-
----
-
-## � 环境要求
-
-- **Python 3.8+**（用于执行分析脚本）
-- **Python 依赖**：`pandas`、`numpy`、`openpyxl`（Word 报告额外需要 `python-docx`）
-
-```bash
-pip install pandas numpy openpyxl python-docx
-```
-
----
 
 ## 📁 项目结构
 
