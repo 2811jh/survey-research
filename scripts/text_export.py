@@ -98,13 +98,12 @@ def _auto_label_texts(texts: list, dimensions: list) -> list:
             if len(p) >= 2:  # 至少2个字的词才有效
                 keywords.add(p)
 
-        # 从 examples 中提取辅助关键词（取每条的前4个字作为短语特征）
-        for ex in dim.get("examples", [])[:5]:
+        # 从 examples 中提取辅助关键词（取每条前5个2-4字词）
+        for ex in dim.get("examples", []):
             ex_clean = ex.strip()
             if len(ex_clean) >= 2:
-                # 提取开头的关键动词短语（如"优化卡顿" -> "优化", "卡顿"）
                 short_words = re.findall(r'[\u4e00-\u9fff]{2,4}', ex_clean)
-                for w in short_words[:3]:
+                for w in short_words[:5]:
                     keywords.add(w)
 
         dim_keywords.append({

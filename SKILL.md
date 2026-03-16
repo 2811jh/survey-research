@@ -322,9 +322,21 @@ Word 格式需要额外依赖 `python-docx`，如环境缺失，先执行 `pip i
 >
 > 选项：["当前抽样结果已足够（推荐）", "对全量文本进行分析"]
 
-如果用户选择全量分析，则以 `--sample_n 0` 重新提取全量文本，
-使用已涌现的维度框架对全量文本进行自动标注（调用 text_export.py），
-更新 Excel 和报告中的统计数据。
+如果用户选择全量分析，则以 `--sample_n 0` 重新调用 text_export.py：
+
+```bash
+python {SKILL_DIR}/scripts/text_export.py \
+  --output_path "{文件目录}/{文件名}_文本分析.xlsx" \
+  --results_file "临时JSON文件路径" \
+  --file_path "原始数据文件路径" \
+  --sample_n 0
+```
+
+这会对全量文本进行关键词规则标注，并重新统计维度 count/percentage。
+
+> ⚠️ **全量标注局限性**：规则标注基于关键词匹配，覆盖率通常低于 AI 编码（约 40-60% 的文本可被自动标注，
+> 其余标为"其他"）。为提高覆盖率，在 results JSON 的 examples 中尽可能多提供典型原声（6-10 条），
+> 这些原声中的关键词会被自动提取作为匹配规则。
 
 ---
 
