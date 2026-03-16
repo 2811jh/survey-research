@@ -8,7 +8,7 @@
 
 ### 一键安装 （npx）
 
-需要 [Node.js](https://nodejs.org/) >= 18
+> ⚠️ **注意**：需要 [Node.js](https://nodejs.org/) >= 18
 
 ```bash
 npx skills add 2811jh/survey-research
