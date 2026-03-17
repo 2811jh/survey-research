@@ -431,26 +431,29 @@ def export_text_report(results: list, output_path: str,
                         all_texts = extract_result.get("texts", [])
                         if all_texts:
                             if sample_n > 0 and len(all_texts) > sample_n:
-                                # 抽样模式：只标注 sample_n 条，总结概览使用 AI 原始统计
+                                # 抽样模式：只标注 sample_n 条
                                 import random
                                 sampled_texts = random.sample(all_texts, sample_n)
                                 details = _auto_label_texts(sampled_texts, dimensions)
                             else:
-                                # 全量模式：标注全部文本，并重新统计维度 count/percentage
+                                # 全量模式：标注全部文本
                                 details = _auto_label_texts(all_texts, dimensions)
-                                # 根据全量标注结果重新计算维度统计
-                                dim_counts = {}
-                                for d in details:
-                                    for label in d["labels"].split(", "):
-                                        label = label.strip()
-                                        if label and label != "其他":
-                                            dim_counts[label] = dim_counts.get(label, 0) + 1
-                                total_labeled = len(details)
-                                for dim in dimensions:
-                                    name = dim.get("name", "")
-                                    count = dim_counts.get(name, 0)
-                                    dim["count"] = count
-                                    dim["percentage"] = f"{count / total_labeled * 100:.1f}%" if total_labeled > 0 else "0%"
+
+                            # 【关键】无论抽样还是全量，都从逐条明细中反算总结概览的统计
+                            # 确保总结概览与逐条明细数据完全一致
+                            dim_counts = {}
+                            for d in details:
+                                for label in d["labels"].split(", "):
+                                    label = label.strip()
+                                    if label and label != "其他":
+                                        dim_counts[label] = dim_counts.get(label, 0) + 1
+                            total_labeled = len(details)
+                            for dim in dimensions:
+                                name = dim.get("name", "")
+                                count = dim_counts.get(name, 0)
+                                dim["count"] = count
+                                dim["percentage"] = f"{count / total_labeled * 100:.1f}%" if total_labeled > 0 else "0%"
+
                             question_data["details"] = details
                             auto_labeled_count += len(details)
 
