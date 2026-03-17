@@ -685,8 +685,7 @@ def run_basic_stats(file_path: str, sheet_name=0, output_path: str = None) -> di
 
     if output_path is None:
         base = os.path.splitext(file_path)[0]
-        ts = datetime.now().strftime("%Y%m%d%H%M%S")
-        output_path = f"{base}_stat_{ts}.xlsx"
+        output_path = f"{base}_基础统计.xlsx"
 
     if os.path.exists(output_path):
         try:
