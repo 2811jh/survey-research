@@ -191,10 +191,17 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 1. **脚本输出解析**：所有脚本通过 stdout 输出 JSON，错误信息输出到 stderr。
    执行后读取 stdout 的 JSON 来获取结果数据。
 
-2. **大数据量处理**：如果文本题回答超过 500 条，先抽样分析：
-   ```bash
-   python text_extract.py --file_path "..." --column "..." --sample_n 300
-   ```
+2. **大数据量处理**：
+   - 如果文本题回答超过 500 条，先抽样分析：
+     ```bash
+     python text_extract.py --file_path "..." --column "..." --sample_n 300
+     ```
+   - **大文件耐心等待**：当数据量 > 20,000 条（文件 > 30MB）时，下载和处理可能需要 1-3 分钟。
+     执行脚本命令后**耐心等待脚本自然返回结果即可**，不要反复用 ping、tasklist、dir 去轮询进度。
+     在执行命令前，先给用户一段安抚提示，例如：
+     > ⏳ 这份问卷数据量较大（约 XX,XXX 条），下载和处理预计需要 1-2 分钟，请稍等片刻...
+     
+     脚本运行完会自动输出 JSON 结果，不需要你做任何额外的等待操作。
 
 3. **Windows 路径**：在 Windows 上执行脚本时，文件路径使用正斜杠或双反斜杠。
 
