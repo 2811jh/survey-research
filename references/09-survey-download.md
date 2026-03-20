@@ -73,7 +73,7 @@ python {SKILL_DIR}/scripts/survey_download.py download --id 确定的ID --output
 
 ## 大文件处理
 
-数据量超 2000 条的问卷，服务端会返回 ZIP 压缩包（内含多个分片文件）。脚本会自动解压。
+数据量超 20000 条的问卷，服务端会返回 ZIP 压缩包（内含多个分片文件）。脚本会自动解压。
 - CSV 分片：自动合并为单个 CSV
 - XLSX 分片：自动合并为单个 CSV（XLSX 合并太慢，转 CSV 更实用）
 - 合并需要 `pandas` + `openpyxl`，如果未安装会保留分片文件并提示
