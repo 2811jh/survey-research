@@ -4,17 +4,18 @@
 
 ## 目标
 
-**默认输出 Excel 格式报告**（`.xlsx`），同时保留 Markdown 源文件。
-如用户要求其他格式（Word / TXT / 仅 Markdown），按需调整。
+**默认输出 Word 格式报告**（`.docx`），同时保留 Markdown 源文件。
+如用户要求其他格式（Excel / TXT / 仅 Markdown），按需调整。
 
 ## 执行流程
 
 1. 先按下方模板撰写 Markdown 报告内容，保存为 `{文件名}_分析报告.md`
-2. **自动调用** `report_export.py` 将 Markdown 转为 Excel：
+2. **自动调用** `report_export.py` 将 Markdown 转为 Word：
    ```bash
-   python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format xlsx
+   python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format docx
    ```
-3. 告知用户报告已生成，Excel 版为主交付物
+   > Word 格式需要 `python-docx`，如环境缺失先执行 `pip install python-docx`
+3. 告知用户报告已生成，Word 版为主交付物
 
 ## Markdown 报告结构
 

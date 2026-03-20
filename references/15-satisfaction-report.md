@@ -213,11 +213,12 @@ NPS = (推荐者 / total - 贬损者 / total) * 100  # 结果为百分比
 ## 五、输出文件
 
 1. 先撰写 Markdown 报告，保存为 `{文件名}_满意度报告.md`
-2. **默认自动转为 Excel**：
+2. **默认自动转为 Word**：
    ```bash
-   python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format xlsx
+   python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format docx
    ```
-3. 如用户要求其他格式（Word / TXT），调用 `report_export.py` 的对应 `--format` 参数
+   > Word 格式需要 `python-docx`，如环境缺失先执行 `pip install python-docx`
+3. 如用户要求其他格式（Excel / TXT），调用 `report_export.py` 的对应 `--format` 参数
 
 ## 六、与其他阶段的关系
 
