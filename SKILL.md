@@ -3,12 +3,15 @@ name: survey-research
 description: |
   对问卷原始数据进行全流程自动化分析，包括基础统计（频率分布 + 人口学概览）、
   交叉分析（不同人群差异对比）和文本分析（开放题主题归纳）。
-  支持 CSV/Excel 格式输入，输出 Markdown 摘要报告 + Excel 详细数据报告。
+  支持两种数据来源：用户提供本地 CSV/Excel 文件，或从问卷系统直接下载（支持清洗）后分析。
+  输出 Markdown 摘要报告 + Excel 详细数据报告，支持转换为 Word/TXT 格式。
   当用户要求分析问卷数据、生成问卷调研报告、对比不同人群差异、
   分析开放题文本内容时触发。即使用户没有明确说"问卷"，只要涉及
   调研数据分析、用户反馈分析、满意度分析、NPS 分析等场景也应触发此 skill。
+  当用户说"下载并分析问卷"、"清洗问卷然后出报告"等涉及下载+分析的组合场景时，
+  也应触发此 skill（内部会调用 survey_download 完成下载环节）。
   确保在用户说"帮我分析这份问卷"、"分析一下不同性别的差异"、
-  "请结合文本题分析"等类似表达时使用。
+  "请结合文本题分析"、"下载问卷90450然后分析"等类似表达时使用。
 ---
 
 # 问卷研究分析（Survey Research）
@@ -39,6 +42,57 @@ pip install pandas numpy openpyxl
 
 ---
 
+## 数据来源路由
+
+在开始分析前，首先判断数据从哪里来。根据用户的表达分为两条路径：
+
+### 路径 A：用户已有本地文件（直接分析）
+
+**触发条件**：用户提供了本地文件路径，或说"分析这份数据"、"帮我看看这个 xlsx"等。
+
+→ 直接跳到下方「阶段 1：数据加载与理解」。
+
+### 路径 B：从问卷系统下载后分析
+
+**触发条件**：用户提到"下载问卷"、"先帮我下数据再分析"、"清洗并分析问卷 xxx"、
+"从问卷系统拉数据"、"帮我下载 90450 的数据然后分析"等。
+
+**执行步骤**：
+
+1. **调用 survey_download skill 下载数据**：
+   本 skill 的同级目录下有 `survey_download` 工具。找到其 SKILL.md 所在位置
+   （通常在 `{SKILL_DIR}/../survey_download/`），按照该 skill 的流程完成下载。
+
+   快速参考（完整用法请读 survey_download 的 SKILL.md）：
+   ```bash
+   # 搜索问卷（按名称）——注意 --platform 放在子命令前面
+   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn search --name "关键词"
+
+   # 下载问卷（按 ID），默认导出量化数据 + 文本数据
+   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn download --id 问卷ID --output_dir "输出目录"
+
+   # 清洗后下载（先预览规则，用户确认后执行）
+   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn clean --id 问卷ID --dry-run
+   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn download --id 问卷ID --clean --output_dir "输出目录"
+   ```
+
+   > `--platform cn` = 国内（survey-game.163.com），`--platform intl` = 国外（survey-game.easebar.com）。
+   > 默认国外。如果用户没说明平台，用 `ask_user_question` 让用户选择。
+
+2. **确定分析用的文件**：
+   下载成功后，脚本返回 JSON 包含文件路径。优先使用 **量化数据（quantified_data）** 的 `.xlsx` 文件
+   进行分析（列名为编码后的 Q1, Q2...，适合统计分析）。如果用户需要看原始文本选项，
+   也可使用文本数据（text_data）的 `.csv` 文件。
+
+3. **将文件路径传入分析流程**：
+   拿到文件路径后，自动进入下方「阶段 1：数据加载与理解」继续执行。
+   **不需要用户再手动指定路径**——下载完直接开始分析，一气呵成。
+
+> 💡 **清洗 + 下载 + 分析 可以一句话完成**：用户说"清洗并下载问卷 90450，然后帮我分析"，
+> 你应该依次执行：清洗预览 → 用户确认 → 清洗下载 → 数据加载 → 基础统计 → 报告生成，全程不中断。
+
+---
+
 ## 整体工作流程
 
 根据用户请求，按以下 5 个阶段顺序执行。并非所有阶段都必须执行——
@@ -48,7 +102,7 @@ pip install pandas numpy openpyxl
 
 **目标**：理解问卷结构，识别分组变量，与用户确认分析范围。
 
-1. **获取文件路径**：用户提供数据文件（CSV / Excel）的绝对路径。
+1. **获取文件路径**：用户提供数据文件路径，或由路径 B（下载流程）自动传入。
 
 2. **加载并分类数据**：
    ```bash
