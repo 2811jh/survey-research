@@ -172,11 +172,16 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 
 → **读取 `references/13-text-analysis-workflow.md` 获取完整执行步骤。**
 
-### 阶段 5：生成综合报告
+### 阶段 5：生成报告
 
-**触发条件**：完成上述分析阶段后生成报告，或用户要求转换报告格式。
+完成分析后根据用户意图选择对应的报告框架：
 
-→ **读取 `references/14-report-workflow.md` 获取报告模板、格式转换命令和后续操作提示。**
+| 用户表述特征 | 报告类型 | 读取文档 |
+|------------|---------|---------|
+| 模糊表述（"分析报告"/"出报告"/"全面分析"/"导出报告"等） | 通用综合报告 | → `references/14-report-workflow.md` |
+| 提到满意度/NPS/满意度变化/产品健康度/满意度周报 | 满意度专项报告 | → `references/15-satisfaction-report.md` |
+
+> 💡 未来扩展：新增报告类型只需新建 `references/1X-xxx-report.md` 并在此表中加一行即可。
 
 ---
 

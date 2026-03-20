@@ -21,7 +21,8 @@
 | 11 | `11-survey-cookie.md` | Cookie 处理与自动刷新 | 数据来源路由 B |
 | 12 | `12-crosstab-workflow.md` | 交叉分析完整工作流程 | 阶段 3（按需加载） |
 | 13 | `13-text-analysis-workflow.md` | 文本分析完整工作流程 | 阶段 4（按需加载） |
-| 14 | `14-report-workflow.md` | 报告生成 + 格式转换 + 后续提示 | 阶段 5（按需加载） |
+| 14 | `14-report-workflow.md` | 通用综合报告生成 + 格式转换 + 后续提示 | 阶段 5 — 通用报告（按需加载） |
+| 15 | `15-satisfaction-report.md` | 满意度专项报告（NPS + 细分维度 + 原因 + 预警） | 阶段 5 — 满意度报告（按需加载） |
 
 ---
 
