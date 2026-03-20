@@ -26,6 +26,19 @@ from typing import Optional
 #                           辅助函数
 # ========================================================================= #
 
+def _detect_csv_encoding(filepath, sample_size=8192):
+    """检测 CSV 文件编码"""
+    with open(filepath, 'rb') as f:
+        raw = f.read(sample_size)
+    if raw.startswith(b'\xef\xbb\xbf'):
+        return 'utf-8-sig'
+    try:
+        raw.decode('utf-8')
+        return 'utf-8'
+    except UnicodeDecodeError:
+        return 'gbk'
+
+
 def _extract_subcol_number(subcol: str, prefix: str) -> int:
     """从多选子列名中提取选项序号"""
     suffix = subcol.split(prefix)[1].strip()
@@ -242,7 +255,7 @@ def load_and_classify(file_path: str, sheet_name=0) -> dict:
     """
     ext = file_path.rsplit('.', 1)[-1].lower()
     if ext == 'csv':
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, encoding=_detect_csv_encoding(file_path))
     else:
         df = pd.read_excel(file_path, sheet_name=sheet_name)
 

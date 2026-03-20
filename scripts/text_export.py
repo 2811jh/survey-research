@@ -57,6 +57,19 @@ from openpyxl.utils import get_column_letter
 #                        Excel 导出核心
 # ========================================================================= #
 
+def _detect_csv_encoding(filepath, sample_size=8192):
+    """检测 CSV 文件编码"""
+    with open(filepath, 'rb') as f:
+        raw = f.read(sample_size)
+    if raw.startswith(b'\xef\xbb\xbf'):
+        return 'utf-8-sig'
+    try:
+        raw.decode('utf-8')
+        return 'utf-8'
+    except UnicodeDecodeError:
+        return 'gbk'
+
+
 def _safe_sheet_name(name: str, max_len: int = 28) -> str:
     """生成安全的 sheet 名称（去除非法字符，截断长度）"""
     # 去除 Excel sheet 名非法字符
@@ -394,7 +407,7 @@ def export_text_report(results: list, output_path: str,
         try:
             ext = file_path.rsplit('.', 1)[-1].lower()
             if ext == 'csv':
-                source_df = pd.read_csv(file_path)
+                source_df = pd.read_csv(file_path, encoding=_detect_csv_encoding(file_path))
             else:
                 source_df = pd.read_excel(file_path, sheet_name=sheet_name)
             source_df.columns = [str(c).strip() for c in source_df.columns]

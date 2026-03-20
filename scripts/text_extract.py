@@ -35,6 +35,23 @@ from load_and_classify import classify_columns
 
 
 # ========================================================================= #
+#                        辅助函数
+# ========================================================================= #
+
+def _detect_csv_encoding(filepath, sample_size=8192):
+    """检测 CSV 文件编码"""
+    with open(filepath, 'rb') as f:
+        raw = f.read(sample_size)
+    if raw.startswith(b'\xef\xbb\xbf'):
+        return 'utf-8-sig'
+    try:
+        raw.decode('utf-8')
+        return 'utf-8'
+    except UnicodeDecodeError:
+        return 'gbk'
+
+
+# ========================================================================= #
 #                        文本清洗
 # ========================================================================= #
 
@@ -227,7 +244,7 @@ def main():
         # 加载数据
         ext = args.file_path.rsplit('.', 1)[-1].lower()
         if ext == 'csv':
-            df = pd.read_csv(args.file_path)
+            df = pd.read_csv(args.file_path, encoding=_detect_csv_encoding(args.file_path))
         else:
             df = pd.read_excel(args.file_path, sheet_name=sheet_name)
         df.columns = [str(c).strip() for c in df.columns]
