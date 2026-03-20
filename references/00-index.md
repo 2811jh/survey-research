@@ -16,6 +16,12 @@
 | 06 | `06-qual-quant-integration.md` | 定性定量融合策略 | 阶段 5（综合报告） |
 | 07 | `07-persona-development.md` | 用户画像构建 | 阶段 5（按需） |
 | 08 | `08-opportunity-sizing.md` | 机会规模估算与优先级 | 阶段 5（策略建议） |
+| 09 | `09-survey-download.md` | 问卷下载操作指南 | 数据来源路由 B |
+| 10 | `10-survey-clean.md` | 问卷数据清洗规则 | 数据来源路由 B |
+| 11 | `11-survey-cookie.md` | Cookie 处理与自动刷新 | 数据来源路由 B |
+| 12 | `12-crosstab-workflow.md` | 交叉分析完整工作流程 | 阶段 3（按需加载） |
+| 13 | `13-text-analysis-workflow.md` | 文本分析完整工作流程 | 阶段 4（按需加载） |
+| 14 | `14-report-workflow.md` | 报告生成 + 格式转换 + 后续提示 | 阶段 5（按需加载） |
 
 ---
 
