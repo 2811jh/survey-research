@@ -105,7 +105,8 @@ pip install pandas numpy openpyxl requests
 > - `"error"` → 将 `message` 翻译为用户友好语言告知原因
 > - `"no_match"` → 告知用户未找到，建议换关键词或提供 ID
 > - `"multiple_matches"` → 用 `ask_user_question` 展示列表让用户选择
-> - Cookie 失效时脚本自动刷新，通常无需额外处理
+> - Cookie 失效时脚本会自动弹出浏览器让用户登录，登录后自动继续。
+>   **严禁询问用户"选择哪种登录方式"或让用户手动复制 Cookie**，详见 `references/11-survey-cookie.md`
 
 ---
 
