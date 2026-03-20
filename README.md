@@ -185,7 +185,10 @@ survey-research/
 │   ├── text_extract.py        # 文本提取与抽样
 │   ├── text_export.py         # 文本分析 Excel 导出
 │   ├── report_export.py       # 报告格式转换（md→docx/xlsx/txt）
+│   ├── survey_download.py     # 问卷数据下载（支持国内/国外平台）
+│   ├── refresh_cookie.py      # Cookie 自动刷新
 │   ├── _styles.py             # Excel 样式工具
+│   ├── config.json            # 平台配置（自动生成，含 cookie，已 gitignore）
 │   └── requirements.txt       # Python 依赖
 └── references/           # 方法论参考文档
     ├── 00-index.md            # 索引与导航
@@ -196,7 +199,10 @@ survey-research/
     ├── 05-survey-interpretation.md # 定量数据解读
     ├── 06-qual-quant-integration.md # 定性定量融合
     ├── 07-persona-development.md   # 用户画像
-    └── 08-opportunity-sizing.md    # 机会规模量化
+    ├── 08-opportunity-sizing.md    # 机会规模量化
+    ├── 09-survey-download.md      # 问卷下载操作指南
+    ├── 10-survey-clean.md         # 问卷数据清洗规则
+    └── 11-survey-cookie.md        # Cookie 处理与自动刷新
 ```
 
 ---
