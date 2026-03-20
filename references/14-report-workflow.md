@@ -4,7 +4,17 @@
 
 ## 目标
 
-输出 Markdown 摘要报告（默认），支持按用户需求转换为 TXT / Excel / Word 格式。
+**默认输出 Excel 格式报告**（`.xlsx`），同时保留 Markdown 源文件。
+如用户要求其他格式（Word / TXT / 仅 Markdown），按需调整。
+
+## 执行流程
+
+1. 先按下方模板撰写 Markdown 报告内容，保存为 `{文件名}_分析报告.md`
+2. **自动调用** `report_export.py` 将 Markdown 转为 Excel：
+   ```bash
+   python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format xlsx
+   ```
+3. 告知用户报告已生成，Excel 版为主交付物
 
 ## Markdown 报告结构
 
