@@ -1,4 +1,12 @@
+# 分析核心依赖
 pandas>=1.5.0
 numpy>=1.23.0
 openpyxl>=3.0.10
 python-docx>=0.8.11
+
+# 问卷下载依赖
+requests>=2.28.0
+
+# Cookie 自动刷新（可选，不安装则需手动配置 Cookie）
+# pip install playwright && playwright install chromium
+# playwright>=1.40.0

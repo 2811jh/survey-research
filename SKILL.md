@@ -3,15 +3,15 @@ name: survey-research
 description: |
   对问卷原始数据进行全流程自动化分析，包括基础统计（频率分布 + 人口学概览）、
   交叉分析（不同人群差异对比）和文本分析（开放题主题归纳）。
-  支持两种数据来源：用户提供本地 CSV/Excel 文件，或从问卷系统直接下载（支持清洗）后分析。
+  支持两种数据来源：用户提供本地 CSV/Excel 文件，或通过问卷 ID/名称从问卷系统直接下载（支持清洗）后分析。
   输出 Markdown 摘要报告 + Excel 详细数据报告，支持转换为 Word/TXT 格式。
   当用户要求分析问卷数据、生成问卷调研报告、对比不同人群差异、
   分析开放题文本内容时触发。即使用户没有明确说"问卷"，只要涉及
   调研数据分析、用户反馈分析、满意度分析、NPS 分析等场景也应触发此 skill。
-  当用户说"下载并分析问卷"、"清洗问卷然后出报告"等涉及下载+分析的组合场景时，
-  也应触发此 skill（内部会调用 survey_download 完成下载环节）。
+  当用户说"下载并分析问卷"、"清洗问卷然后出报告"、"帮我下载问卷90450"、
+  "下载国内问卷数据"、"从问卷系统拉数据"等涉及下载+分析的场景时，也应触发。
   确保在用户说"帮我分析这份问卷"、"分析一下不同性别的差异"、
-  "请结合文本题分析"、"下载问卷90450然后分析"等类似表达时使用。
+  "请结合文本题分析"、"下载问卷90450然后分析"、"清洗并导出问卷"等类似表达时使用。
 ---
 
 # 问卷研究分析（Survey Research）
@@ -29,15 +29,17 @@ description: |
 {SKILL_DIR}/scripts/text_extract.py
 {SKILL_DIR}/scripts/text_export.py
 {SKILL_DIR}/scripts/report_export.py
+{SKILL_DIR}/scripts/survey_download.py
+{SKILL_DIR}/scripts/refresh_cookie.py
 ```
 
 其中 `{SKILL_DIR}` 是本 skill 所在目录的绝对路径。
 
 ## 依赖要求
 
-脚本依赖 `pandas`、`numpy`、`openpyxl`。如果用户环境缺失，先执行：
+脚本依赖 `pandas`、`numpy`、`openpyxl`、`requests`。如果用户环境缺失，先执行：
 ```bash
-pip install pandas numpy openpyxl
+pip install pandas numpy openpyxl requests
 ```
 
 ---
@@ -55,41 +57,55 @@ pip install pandas numpy openpyxl
 ### 路径 B：从问卷系统下载后分析
 
 **触发条件**：用户提到"下载问卷"、"先帮我下数据再分析"、"清洗并分析问卷 xxx"、
-"从问卷系统拉数据"、"帮我下载 90450 的数据然后分析"等。
+"从问卷系统拉数据"、"帮我下载 90450 的数据然后分析"、给了问卷 ID 但没给本地路径等。
 
 **执行步骤**：
 
-1. **调用 survey_download skill 下载数据**：
-   本 skill 的同级目录下有 `survey_download` 工具。找到其 SKILL.md 所在位置
-   （通常在 `{SKILL_DIR}/../survey_download/`），按照该 skill 的流程完成下载。
+1. **确定平台**：
+   支持国内（`cn`，survey-game.163.com）和国外（`intl`，survey-game.easebar.com）。
+   - 用户提到"国内"、"163" → `--platform cn`
+   - 用户提到"国外"、"intl"、"easebar" → `--platform intl`
+   - 未说明 → 用 `ask_user_question` 让用户选择
 
-   快速参考（完整用法请读 survey_download 的 SKILL.md）：
+2. **读取下载参考文档并执行**：
+   根据用户意图读取对应的 reference 文档：
+
+   | 用户意图 | 读取文档 |
+   |----------|----------|
+   | 下载问卷数据 | `references/09-survey-download.md` |
+   | 清洗/筛选数据 | `references/10-survey-clean.md` |
+   | 清洗并下载 | 先读 `10-survey-clean.md` 完成确认，再读 `09-survey-download.md` 执行下载 |
+   | Cookie 问题 | `references/11-survey-cookie.md` |
+
+   快速参考命令（`--platform` 放在子命令前面）：
    ```bash
-   # 搜索问卷（按名称）——注意 --platform 放在子命令前面
-   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn search --name "关键词"
+   # 搜索问卷
+   python {SKILL_DIR}/scripts/survey_download.py --platform cn search --name "关键词"
 
-   # 下载问卷（按 ID），默认导出量化数据 + 文本数据
-   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn download --id 问卷ID --output_dir "输出目录"
+   # 下载问卷
+   python {SKILL_DIR}/scripts/survey_download.py --platform cn download --id 问卷ID --output_dir "输出目录"
 
-   # 清洗后下载（先预览规则，用户确认后执行）
-   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn clean --id 问卷ID --dry-run
-   python {SKILL_DIR}/../survey_download/survey_download.py --platform cn download --id 问卷ID --clean --output_dir "输出目录"
+   # 清洗预览 → 确认 → 清洗下载
+   python {SKILL_DIR}/scripts/survey_download.py --platform cn clean --id 问卷ID --dry-run
+   python {SKILL_DIR}/scripts/survey_download.py --platform cn download --id 问卷ID --clean --output_dir "输出目录"
    ```
 
-   > `--platform cn` = 国内（survey-game.163.com），`--platform intl` = 国外（survey-game.easebar.com）。
-   > 默认国外。如果用户没说明平台，用 `ask_user_question` 让用户选择。
+3. **确定分析用的文件**：
+   下载成功后，脚本返回 JSON 包含文件路径。优先使用 **量化数据（quantified_data）** 文件
+   进行分析（列名为编码后的 Q1, Q2...，适合统计分析）。
 
-2. **确定分析用的文件**：
-   下载成功后，脚本返回 JSON 包含文件路径。优先使用 **量化数据（quantified_data）** 的 `.xlsx` 文件
-   进行分析（列名为编码后的 Q1, Q2...，适合统计分析）。如果用户需要看原始文本选项，
-   也可使用文本数据（text_data）的 `.csv` 文件。
-
-3. **将文件路径传入分析流程**：
+4. **自动进入分析流程**：
    拿到文件路径后，自动进入下方「阶段 1：数据加载与理解」继续执行。
    **不需要用户再手动指定路径**——下载完直接开始分析，一气呵成。
 
 > 💡 **清洗 + 下载 + 分析 可以一句话完成**：用户说"清洗并下载问卷 90450，然后帮我分析"，
 > 你应该依次执行：清洗预览 → 用户确认 → 清洗下载 → 数据加载 → 基础统计 → 报告生成，全程不中断。
+
+> ⚠️ **错误处理**——根据 JSON 中的 `status` 字段决定下一步：
+> - `"error"` → 将 `message` 翻译为用户友好语言告知原因
+> - `"no_match"` → 告知用户未找到，建议换关键词或提供 ID
+> - `"multiple_matches"` → 用 `ask_user_question` 展示列表让用户选择
+> - Cookie 失效时脚本自动刷新，通常无需额外处理
 
 ---
 
@@ -438,6 +454,9 @@ python {SKILL_DIR}/scripts/text_export.py \
 | `references/06-qual-quant-integration.md` | 综合报告中融合定量与定性发现的写法（阶段 5） |
 | `references/07-persona-development.md` | 用户分群特征描述，如需输出用户画像 |
 | `references/08-opportunity-sizing.md` | 策略建议的机会规模量化与优先级排序（阶段 5） |
+| `references/09-survey-download.md` | 从问卷系统下载数据的完整流程（数据来源路由 B） |
+| `references/10-survey-clean.md` | 问卷数据清洗规则与操作流程（数据来源路由 B） |
+| `references/11-survey-cookie.md` | Cookie 处理与自动刷新（下载遇到认证问题时） |
 
 ### 核心调用时机
 
