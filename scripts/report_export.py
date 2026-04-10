@@ -488,6 +488,7 @@ FORMAT_MAP = {
     "docx": export_docx,
     "word": export_docx,
     "excel": export_xlsx,
+    "html": None,  # HTML 格式由 html_report.py 独立处理，此处仅做路由提示
 }
 
 
@@ -508,8 +509,11 @@ def convert_report(input_path: str, fmt: str, output_path: str = None) -> dict:
     if fmt == "md" or fmt == "markdown":
         return {"status": "success", "output_path": input_path, "format": "md", "message": "已经是 Markdown 格式"}
 
+    if fmt == "html":
+        return {"error": "HTML 满意度报告请直接使用 html_report.py 脚本生成（一键计算+渲染），无需通过 Markdown 中转。用法: python html_report.py --file_path '量化数据.csv' --theme default"}
+
     if fmt not in FORMAT_MAP:
-        return {"error": f"不支持的格式: {fmt}。支持: md, txt, xlsx, docx"}
+        return {"error": f"不支持的格式: {fmt}。支持: md, txt, xlsx, docx, html（需用 html_report.py）"}
 
     if not os.path.exists(input_path):
         return {"error": f"文件不存在: {input_path}"}

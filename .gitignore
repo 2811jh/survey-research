@@ -4,3 +4,9 @@ __pycache__/
 
 # 敏感配置（含 cookie / token）
 scripts/config.json
+
+# 浏览器自动登录产生的缓存目录
+scripts/.browser_profile/
+
+# ECharts 离线副本（太大，不入库；README 中有下载说明）
+scripts/templates/echarts.min.js

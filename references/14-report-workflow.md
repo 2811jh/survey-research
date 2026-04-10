@@ -4,8 +4,8 @@
 
 ## 目标
 
-**默认输出 Word 格式报告**（`.docx`），同时保留 Markdown 源文件。
-如用户要求其他格式（Excel / TXT / 仅 Markdown），按需调整。
+**默认输出 HTML 格式报告**（`.html`，含交互式图表），单文件离线可用。
+如用户要求 Word / Excel / TXT 格式，走 Markdown → 转换流程。
 
 ## 执行流程
 

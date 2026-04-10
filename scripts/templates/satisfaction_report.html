@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ meta.title }} 满意度分析报告</title>
+<style>
+/* ================================================================
+   CSS 变量主题系统 — 修改这里切换风格
+   当前主题: {{ theme }}
+   可选: default / dark / minimal
+   ================================================================ */
+
+{% if theme == 'dark' %}
+/* ---- 深色仪表盘 ---- */
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-card: #1e2a4a;
+  --bg-card-hover: #243456;
+  --text-primary: #e8e8e8;
+  --text-secondary: #a0a8c0;
+  --text-muted: #6b7394;
+  --accent: #4fc3f7;
+  --accent-light: rgba(79,195,247,0.15);
+  --border: #2a3558;
+  --shadow: 0 4px 20px rgba(0,0,0,0.4);
+  --success: #66bb6a;
+  --warning: #ffa726;
+  --danger: #ef5350;
+  --chart-bg: transparent;
+  --header-bg: linear-gradient(135deg, #0d1b3e 0%, #1a2a5e 100%);
+  --header-text: #e8e8e8;
+  --table-header-bg: #2a3558;
+  --table-row-even: rgba(42,53,88,0.3);
+  --table-row-hover: rgba(79,195,247,0.08);
+  --gauge-bg: #2a3558;
+  --scrollbar-bg: #16213e;
+  --scrollbar-thumb: #2a3558;
+}
+{% elif theme == 'minimal' %}
+/* ---- 简约素白 ---- */
+:root {
+  --bg-primary: #fafafa;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8f9fa;
+  --text-primary: #2c2c2c;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --accent: #555555;
+  --accent-light: rgba(85,85,85,0.06);
+  --border: #e8e8e8;
+  --shadow: 0 1px 4px rgba(0,0,0,0.06);
+  --success: #4caf50;
+  --warning: #ff9800;
+  --danger: #f44336;
+  --chart-bg: transparent;
+  --header-bg: #ffffff;
+  --header-text: #2c2c2c;
+  --table-header-bg: #f5f5f5;
+  --table-row-even: #fafafa;
+  --table-row-hover: #f0f0f0;
+  --gauge-bg: #f5f5f5;
+  --scrollbar-bg: #f5f5f5;
+  --scrollbar-thumb: #d0d0d0;
+}
+{% else %}
+/* ---- Minecraft 绿色 (default) ---- */
+:root {
+  --bg-primary: #f0f5f0;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f5faf5;
+  --text-primary: #1a2e1a;
+  --text-secondary: #3d5a3d;
+  --text-muted: #8aab8a;
+  --accent: #4caf50;
+  --accent-light: rgba(76,175,80,0.08);
+  --border: #d4e8d4;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --success: #43a047;
+  --warning: #f9a825;
+  --danger: #e53935;
+  --chart-bg: transparent;
+  --header-bg: linear-gradient(135deg, #2e7d32 0%, #43a047 50%, #66bb6a 100%);
+  --header-text: #ffffff;
+  --table-header-bg: #e8f5e9;
+  --table-row-even: #f1f8f1;
+  --table-row-hover: #e0f2e0;
+  --gauge-bg: #e8f5e9;
+  --scrollbar-bg: #e8f5e9;
+  --scrollbar-thumb: #a5d6a7;
+}
+{% endif %}
+
+/* ================================================================
+   全局基础样式
+   ================================================================ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  padding: 0;
+}
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+/* ---- 页面头部 ---- */
+.report-header {
+  background: var(--header-bg);
+  color: var(--header-text);
+  padding: 48px 40px 36px;
+  {% if theme == 'minimal' %}
+  border-bottom: 2px solid var(--border);
+  {% else %}
+  border-radius: 0 0 16px 16px;
+  {% endif %}
+  margin-bottom: 32px;
+}
+.report-header h1 {
+  font-size: 28px; font-weight: 700; margin-bottom: 16px;
+  {% if theme == 'minimal' %}color: var(--text-primary);{% endif %}
+}
+.meta-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.meta-item {
+  {% if theme == 'dark' %}
+  background: rgba(255,255,255,0.08);
+  {% elif theme == 'minimal' %}
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  {% else %}
+  background: rgba(255,255,255,0.18);
+  {% endif %}
+  border-radius: 8px; padding: 12px 16px;
+}
+.meta-item .label { font-size: 12px; opacity: 0.7; margin-bottom: 2px; }
+.meta-item .value { font-size: 15px; font-weight: 600; }
+
+/* ---- 卡片 ---- */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s;
+}
+.card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+.card h2 {
+  font-size: 20px; font-weight: 700; margin-bottom: 20px;
+  padding-bottom: 12px; border-bottom: 2px solid var(--accent);
+  color: var(--accent);
+}
+.card h3 { font-size: 16px; font-weight: 600; margin: 20px 0 12px; color: var(--text-primary); }
+
+/* ---- KPI 大数字 ---- */
+.kpi-row { display: flex; gap: 20px; flex-wrap: wrap; margin: 16px 0; }
+.kpi-box {
+  flex: 1; min-width: 180px; text-align: center;
+  background: var(--accent-light); border-radius: 10px; padding: 20px 16px;
+}
+.kpi-box .kpi-value { font-size: 36px; font-weight: 800; color: var(--accent); }
+.kpi-box .kpi-label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.kpi-box .kpi-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* ---- 状态标签 ---- */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.badge-success { background: rgba(72,187,120,0.15); color: var(--success); }
+.badge-warning { background: rgba(237,137,54,0.15); color: var(--warning); }
+.badge-danger { background: rgba(245,101,101,0.15); color: var(--danger); }
+
+/* ---- 表格 ---- */
+table.data-table {
+  width: 100%; border-collapse: collapse; font-size: 14px; margin: 12px 0;
+}
+table.data-table th {
+  background: var(--table-header-bg); padding: 10px 14px; text-align: left;
+  font-weight: 600; color: var(--text-secondary); font-size: 13px;
+  border-bottom: 2px solid var(--border);
+}
+table.data-table td {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+table.data-table tr:nth-child(even) { background: var(--table-row-even); }
+table.data-table tr:hover { background: var(--table-row-hover); }
+table.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- 图表容器 ---- */
+.chart-box { width: 100%; height: 380px; margin: 12px 0; }
+.chart-box-sm { width: 100%; height: 300px; margin: 12px 0; }
+.chart-row { display: flex; gap: 20px; flex-wrap: wrap; }
+.chart-half { flex: 1; min-width: 400px; }
+
+/* ---- 预警卡片 ---- */
+.alert-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-radius: 8px; margin: 8px 0;
+}
+.alert-card.red { background: rgba(245,101,101,0.1); border-left: 4px solid var(--danger); }
+.alert-card.yellow { background: rgba(237,137,54,0.1); border-left: 4px solid var(--warning); }
+.alert-card.green { background: rgba(72,187,120,0.1); border-left: 4px solid var(--success); }
+.alert-icon { font-size: 24px; }
+.alert-body .alert-title { font-weight: 600; font-size: 14px; }
+.alert-body .alert-desc { font-size: 13px; color: var(--text-secondary); }
+
+/* ---- 响应式 ---- */
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .report-header { padding: 28px 20px 24px; }
+  .report-header h1 { font-size: 22px; }
+  .chart-half { min-width: 100%; }
+  .kpi-box .kpi-value { font-size: 28px; }
+}
+
+/* ---- 打印优化 ---- */
+@media print {
+  body { background: #fff; }
+  .card { box-shadow: none; break-inside: avoid; }
+  .report-header { background: #2e7d32 !important; -webkit-print-color-adjust: exact; }
+}
+</style>
+</head>
+<body>
+
+<!-- ================================================================
+     区块 0: 报告头部
+     可编辑: 修改 meta 信息中的文字
+     ================================================================ -->
+<div class="report-header">
+  <h1>{{ meta.title }} 满意度分析报告</h1>
+  <div class="meta-grid">
+    <div class="meta-item">
+      <div class="label">问卷 ID</div>
+      <div class="value">{{ meta.survey_id }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">有效样本量</div>
+      <div class="value">{{ "{:,}".format(meta.total_n) }} 份</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">数据周期</div>
+      <div class="value">{{ meta.date_range }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">数据清洗</div>
+      <div class="value">{{ meta.clean_desc }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ================================================================
+     区块 1: 宏观大盘 — 整体满意度 + NPS
+     ================================================================ -->
+<div class="card" id="section-macro">
+  <h2>一、宏观大盘</h2>
+
+  <div class="kpi-row">
+    <div class="kpi-box">
+      <div class="kpi-value">{{ overall.mean }}</div>
+      <div class="kpi-label">整体满意度 / 5.0</div>
+      <div class="kpi-sub">满意率 {{ overall.top2 }}% · 不满率 {{ overall.bot2 }}%</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-value">{{ nps.value }}%</div>
+      <div class="kpi-label">NPS 净推荐值
+        {% if nps.value > 30 %}<span class="badge badge-success">优秀</span>
+        {% elif nps.value >= 0 %}<span class="badge badge-warning">有待改进</span>
+        {% else %}<span class="badge badge-danger">比较糟糕</span>{% endif %}
+      </div>
+      <div class="kpi-sub">推荐者 {{ nps.promoters }}% · 被动者 {{ nps.passives }}% · 贬损者 {{ nps.detractors }}%</div>
+    </div>
+  </div>
+
+  <h3>满意度分布 &amp; NPS 分布</h3>
+  <div class="chart-row">
+    <div class="chart-half"><div id="chart-sat-dist" class="chart-box-sm"></div></div>
+    <div class="chart-half"><div id="chart-nps-dist" class="chart-box-sm"></div></div>
+  </div>
+</div>
+
+<!-- ================================================================
+     区块 2: 交叉分析 — 整体满意度 & NPS × 性别/职业
+     ================================================================ -->
+{% if cross_overall %}
+<div class="card" id="section-cross-overall">
+  <h2>二、整体指标 × 人群交叉</h2>
+  {% for group_name, group_data in cross_overall.items() %}
+  <h3>按{{ group_name }}分组</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>{{ group_name }}</th>
+        <th class="num">满意度均值</th>
+        <th class="num">满意率(Top2)</th>
+        <th class="num">NPS</th>
+        <th class="num">推荐者占比</th>
+        <th class="num">贬损者占比</th>
+        <th class="num">样本量</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in group_data %}
+      <tr>
+        <td>{{ row.group }}</td>
+        <td class="num">{{ row.sat_mean }}</td>
+        <td class="num">{{ row.sat_top2 }}%</td>
+        <td class="num">{{ row.nps }}%</td>
+        <td class="num">{{ row.nps_promoters }}%</td>
+        <td class="num">{{ row.nps_detractors }}%</td>
+        <td class="num">{{ "{:,}".format(row.n) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div id="chart-cross-overall-{{ loop.index0 }}" class="chart-box"></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ================================================================
+     区块 3: 细分维度满意度
+     ================================================================ -->
+<div class="card" id="section-dimensions">
+  <h2>三、细分维度满意度</h2>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>排名</th><th>维度</th><th class="num">均值</th>
+        <th class="num">满意率(Top2)</th><th class="num">不满率(Bot2)</th><th>状态</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for dim in dimensions %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ dim.name }}</td>
+        <td class="num">{{ dim.mean }}</td>
+        <td class="num">{{ dim.top2 }}%</td>
+        <td class="num">{{ dim.bot2 }}%</td>
+        <td>
+          {% if dim.mean < 3.0 %}<span class="badge badge-danger">🔻 重点关注</span>
+          {% elif dim.bot2 > 20 %}<span class="badge badge-warning">⚠️ 需关注</span>
+          {% else %}<span class="badge badge-success">✅</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div id="chart-dimensions" class="chart-box"></div>
+</div>
+
+<!-- ================================================================
+     区块 4: 交叉分析 — 细分维度 × 性别/职业
+     ================================================================ -->
+{% if cross_dimensions %}
+<div class="card" id="section-cross-dimensions">
+  <h2>四、细分维度 × 人群交叉</h2>
+  {% for group_name, group_data in cross_dimensions.items() %}
+  <h3>按{{ group_name }}分组 — 各维度均值对比</h3>
+  <div id="chart-cross-dim-{{ loop.index0 }}" class="chart-box"></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ================================================================
+     区块 5: 不满原因 Top10
+     ================================================================ -->
+{% if reasons %}
+<div class="card" id="section-reasons">
+  <h2>五、不满原因 Top10</h2>
+  <div id="chart-reasons" class="chart-box"></div>
+  <table class="data-table">
+    <thead><tr><th>排名</th><th>原因</th><th class="num">占总样本比</th></tr></thead>
+    <tbody>
+    {% for r in reasons[:10] %}
+      <tr><td>{{ loop.index }}</td><td>{{ r.reason }}</td><td class="num">{{ r.pct }}%</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- ================================================================
+     区块 6: 单选 / 多选题图表
+     可编辑: 删除不需要的题目 section
+     ================================================================ -->
+{% if questions %}
+<div class="card" id="section-questions">
+  <h2>六、各题统计图表</h2>
+  {% for q in questions %}
+  <div class="question-block" style="margin-bottom:28px;">
+    <h3>{{ q.title }}</h3>
+    <div id="chart-q-{{ loop.index0 }}" class="chart-box-sm"></div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ================================================================
+     区块 7: 预警汇总
+     ================================================================ -->
+<div class="card" id="section-alerts">
+  <h2>七、预警汇总</h2>
+  {% if alerts %}
+    {% for a in alerts %}
+    <div class="alert-card {{ a.level }}">
+      <div class="alert-icon">{% if a.level == 'red' %}🔴{% elif a.level == 'yellow' %}🟡{% else %}🟢{% endif %}</div>
+      <div class="alert-body">
+        <div class="alert-title">{{ a.indicator }}: {{ a.current }}</div>
+        <div class="alert-desc">{{ a.desc }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="alert-card green">
+      <div class="alert-icon">✅</div>
+      <div class="alert-body">
+        <div class="alert-title">本期各项指标均在健康范围内</div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<!-- ================================================================
+     页脚
+     ================================================================ -->
+<footer style="text-align:center;padding:32px 0 16px;color:var(--text-muted);font-size:12px;">
+  报告生成时间: {{ meta.generated_at }} | 数据来源: 网易问卷系统 #{{ meta.survey_id }}
+</footer>
+
+</div><!-- /.container -->
+
+<!-- ================================================================
+     ECharts 离线库 (内联)
+     ================================================================ -->
+<script>
+{{ echarts_js }}
+</script>
+
+<!-- ================================================================
+     报告数据 (JSON) — 可直接编辑此处修改数据
+     ================================================================ -->
+<script>
+const REPORT_DATA = {{ report_data_json }};
+</script>
+
+<!-- ================================================================
+     图表渲染逻辑
+     ================================================================ -->
+<script>
+(function() {
+  const D = REPORT_DATA;
+  const COLORS = ['#4caf50','#ff9800','#2196f3','#e53935','#9c27b0','#009688','#ffc107','#3f51b5','#f44336','#00bcd4'];
+  const isDark = '{{ theme }}' === 'dark';
+  const textColor = isDark ? '#a0a8c0' : '#4a5568';
+  const axisColor = isDark ? '#2a3558' : '#e2e8f0';
+
+  function initChart(id, option) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const chart = echarts.init(el, isDark ? 'dark' : null);
+    chart.setOption(option);
+    window.addEventListener('resize', function() { chart.resize(); });
+    return chart;
+  }
+
+  /* ---- 满意度分布 ---- */
+  if (D.overall && D.overall.dist) {
+    const labels = Object.keys(D.overall.dist);
+    const values = Object.values(D.overall.dist);
+    initChart('chart-sat-dist', {
+      title: { text: '整体满意度分布', left: 'center', textStyle: { fontSize: 14, color: textColor }},
+      tooltip: { trigger: 'axis', formatter: function(p) { return p[0].name + '分: ' + p[0].value + '人 (' + (p[0].value / D.meta.total_n * 100).toFixed(1) + '%)'; }},
+      xAxis: { type: 'category', data: labels.map(function(l){return l+'分';}), axisLine: { lineStyle: { color: axisColor }}},
+      yAxis: { type: 'value', axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+      series: [{ type: 'bar', data: values, itemStyle: { color: '#4caf50', borderRadius: [4,4,0,0] }, barWidth: '50%' }],
+      grid: { left: 60, right: 20, top: 50, bottom: 40 }
+    });
+  }
+
+  /* ---- NPS 分布 ---- */
+  if (D.nps && D.nps.dist) {
+    const nLabels = Object.keys(D.nps.dist);
+    const nValues = Object.values(D.nps.dist);
+    const nColors = nLabels.map(function(l) {
+      var v = parseInt(l);
+      if (v >= 9) return '#48bb78';
+      if (v >= 7) return '#ed8936';
+      return '#f56565';
+    });
+    initChart('chart-nps-dist', {
+      title: { text: 'NPS 推荐度分布 (0-10)', left: 'center', textStyle: { fontSize: 14, color: textColor }},
+      tooltip: { trigger: 'axis', formatter: function(p) {
+        var v = parseInt(p[0].name);
+        var tag = v >= 9 ? '推荐者' : (v >= 7 ? '被动者' : '贬损者');
+        return p[0].name + '分 [' + tag + ']: ' + p[0].value + '人';
+      }},
+      xAxis: { type: 'category', data: nLabels.map(function(l){return l+'分';}), axisLine: { lineStyle: { color: axisColor }}},
+      yAxis: { type: 'value', axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+      series: [{ type: 'bar', data: nValues.map(function(v,i){ return {value:v, itemStyle:{color:nColors[i]}}; }), barWidth: '60%' }],
+      grid: { left: 60, right: 20, top: 50, bottom: 40 }
+    });
+  }
+
+  /* ---- 交叉-整体指标 ---- */
+  if (D.cross_overall) {
+    var idx = 0;
+    for (var gName in D.cross_overall) {
+      var gData = D.cross_overall[gName];
+      var groups = gData.map(function(r){return r.group;});
+      initChart('chart-cross-overall-' + idx, {
+        title: { text: '按' + gName + ' — 满意度均值 & NPS 对比', left: 'center', textStyle: { fontSize: 14, color: textColor }},
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['满意度均值','NPS(%)'], top: 30 },
+        xAxis: { type: 'category', data: groups, axisLine: { lineStyle: { color: axisColor }}},
+        yAxis: [
+          { type: 'value', name: '满意度', min: 1, max: 5, axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+          { type: 'value', name: 'NPS(%)', axisLine: { lineStyle: { color: axisColor }}, splitLine: { show: false }}
+        ],
+        series: [
+          { name: '满意度均值', type: 'bar', data: gData.map(function(r){return r.sat_mean;}), itemStyle: { color: '#4caf50', borderRadius: [4,4,0,0] }, barWidth: '30%' },
+          { name: 'NPS(%)', type: 'bar', yAxisIndex: 1, data: gData.map(function(r){return r.nps;}), itemStyle: { color: '#ff9800', borderRadius: [4,4,0,0] }, barWidth: '30%' }
+        ],
+        grid: { left: 70, right: 70, top: 70, bottom: 40 }
+      });
+      idx++;
+    }
+  }
+
+  /* ---- 细分维度满意度 ---- */
+  if (D.dimensions && D.dimensions.length > 0) {
+    var dimNames = D.dimensions.map(function(d){return d.name;}).reverse();
+    var dimMeans = D.dimensions.map(function(d){return d.mean;}).reverse();
+    var dimColors = dimMeans.map(function(v){ return v < 3.0 ? '#e53935' : (v < 3.5 ? '#ff9800' : '#4caf50'); });
+    initChart('chart-dimensions', {
+      title: { text: '各维度满意度均值 (5分制)', left: 'center', textStyle: { fontSize: 14, color: textColor }},
+      tooltip: { trigger: 'axis', formatter: function(p){ return p[0].name + ': ' + p[0].value + '/5.0'; }},
+      xAxis: { type: 'value', min: 1, max: 5, axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+      yAxis: { type: 'category', data: dimNames, axisLine: { lineStyle: { color: axisColor }}},
+      series: [{ type: 'bar', data: dimMeans.map(function(v,i){ return {value:v, itemStyle:{color:dimColors[i]}}; }),
+        label: { show: true, position: 'right', formatter: '{c}', color: textColor },
+        barWidth: '50%' }],
+      grid: { left: 160, right: 60, top: 50, bottom: 20 }
+    });
+  }
+
+  /* ---- 交叉-细分维度 ---- */
+  if (D.cross_dimensions) {
+    var idx2 = 0;
+    for (var gName2 in D.cross_dimensions) {
+      var cdData = D.cross_dimensions[gName2];
+      var groupNames = cdData.groups;
+      var dimList = cdData.dimensions;
+      var series = groupNames.map(function(g, gi) {
+        return {
+          name: g, type: 'bar',
+          data: dimList.map(function(d){ return d.values[gi]; }),
+          itemStyle: { color: COLORS[gi % COLORS.length], borderRadius: [4,4,0,0] },
+          barWidth: Math.max(10, 50/groupNames.length) + '%'
+        };
+      });
+      initChart('chart-cross-dim-' + idx2, {
+        title: { text: '按' + gName2 + ' — 各维度满意度对比', left: 'center', textStyle: { fontSize: 14, color: textColor }},
+        tooltip: { trigger: 'axis' },
+        legend: { data: groupNames, top: 30 },
+        xAxis: { type: 'category', data: dimList.map(function(d){return d.name;}), axisLabel: { rotate: 30 }, axisLine: { lineStyle: { color: axisColor }}},
+        yAxis: { type: 'value', min: 1, max: 5, axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+        series: series,
+        grid: { left: 60, right: 20, top: 70, bottom: 80 }
+      });
+      idx2++;
+    }
+  }
+
+  /* ---- 不满原因 Top10 ---- */
+  if (D.reasons && D.reasons.length > 0) {
+    var top10 = D.reasons.slice(0, 10);
+    var rNames = top10.map(function(r){return r.reason;}).reverse();
+    var rPcts = top10.map(function(r){return r.pct;}).reverse();
+    initChart('chart-reasons', {
+      title: { text: '不满原因 Top10 (占总样本比)', left: 'center', textStyle: { fontSize: 14, color: textColor }},
+      tooltip: { trigger: 'axis', formatter: function(p){ return p[0].name + ': ' + p[0].value + '%'; }},
+      xAxis: { type: 'value', axisLabel: { formatter: '{value}%' }, axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+      yAxis: { type: 'category', data: rNames, axisLine: { lineStyle: { color: axisColor }}},
+      series: [{ type: 'bar', data: rPcts, itemStyle: { color: '#e53e3e', borderRadius: [0,4,4,0] },
+        label: { show: true, position: 'right', formatter: '{c}%', color: textColor },
+        barWidth: '55%' }],
+      grid: { left: 240, right: 80, top: 50, bottom: 20 }
+    });
+  }
+
+  /* ---- 单选/多选题图表 ---- */
+  if (D.questions) {
+    D.questions.forEach(function(q, qi) {
+      var chartId = 'chart-q-' + qi;
+      if (q.chart_type === 'pie') {
+        initChart(chartId, {
+          tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+          series: [{ type: 'pie', radius: ['35%','65%'], data: q.options.map(function(o,i){ return {name:o.label, value:o.count, itemStyle:{color:COLORS[i%COLORS.length]}}; }),
+            label: { formatter: '{b}\n{d}%', fontSize: 12 }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' }}}]
+        });
+      } else {
+        var oLabels = q.options.map(function(o){return o.label;});
+        var oCounts = q.options.map(function(o){return o.count;});
+        if (q.options.length > 6) {
+          oLabels = oLabels.reverse();
+          oCounts = oCounts.reverse();
+          initChart(chartId, {
+            tooltip: { trigger: 'axis', formatter: function(p){ return p[0].name + ': ' + p[0].value + '人 (' + (p[0].value/D.meta.total_n*100).toFixed(1) + '%)'; }},
+            xAxis: { type: 'value', axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+            yAxis: { type: 'category', data: oLabels, axisLine: { lineStyle: { color: axisColor }}},
+            series: [{ type: 'bar', data: oCounts, itemStyle: { color: '#66bb6a', borderRadius: [0,4,4,0] }, barWidth: '55%' }],
+            grid: { left: 200, right: 40, top: 20, bottom: 20 }
+          });
+        } else {
+          initChart(chartId, {
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: oLabels, axisLabel: { rotate: oLabels.some(function(l){return l.length > 6;}) ? 25 : 0 }, axisLine: { lineStyle: { color: axisColor }}},
+            yAxis: { type: 'value', axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+            series: [{ type: 'bar', data: oCounts.map(function(v,i){ return {value:v, itemStyle:{color:COLORS[i%COLORS.length]}}; }), barWidth: '45%',
+              itemStyle: { borderRadius: [4,4,0,0] } }],
+            grid: { left: 60, right: 20, top: 20, bottom: 60 }
+          });
+        }
+      }
+    });
+  }
+
+})();
+</script>
+</body>
+</html>

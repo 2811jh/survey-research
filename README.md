@@ -184,6 +184,7 @@ survey-research/
 │   ├── crosstab.py            # 交叉分析
 │   ├── text_extract.py        # 文本提取与抽样
 │   ├── text_export.py         # 文本分析 Excel 导出
+│   ├── html_report.py         # HTML 满意度报告一键生成（默认报告格式）
 │   ├── report_export.py       # 报告格式转换（md→docx/xlsx/txt）
 │   ├── survey_download.py     # 问卷数据下载（支持国内/国外平台）
 │   ├── refresh_cookie.py      # Cookie 自动刷新
