@@ -40,14 +40,14 @@ from urllib.parse import unquote
 
 # ─── 常量配置 ────────────────────────────────────────────────────────────────
 
-# 双平台支持：国内(cn) / 国外(intl)
+# 双平台支持：国内(cn) / 国外(global)，平台键名与 survey-checker 保持一致
 PLATFORMS = {
     "cn": {
         "base_url": "https://survey-game.163.com",
         "domain": "survey-game.163.com",
         "label": "国内",
     },
-    "intl": {
+    "global": {
         "base_url": "https://survey-game.easebar.com",
         "domain": "survey-game.easebar.com",
         "label": "国外",
@@ -55,7 +55,18 @@ PLATFORMS = {
 }
 DEFAULT_PLATFORM = "cn"
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _config_file(platform="cn"):
+    """按平台返回 config 文件路径（与 survey-checker/refresh_cookie.py 保持一致）"""
+    if platform == "cn":
+        return os.path.join(_SCRIPT_DIR, "config.json")
+    return os.path.join(_SCRIPT_DIR, f"config_{platform}.json")
+
+
+# 向后兼容
+CONFIG_FILE = _config_file("cn")
 
 # API 端点
 API_SURVEY_LIST = "/view/survey/list"
@@ -396,10 +407,15 @@ class SurveyDownloader:
     # ── Cookie 管理 ──────────────────────────────────────────────────────
 
     def _load_config(self):
-        """从 config.json 加载 Cookie 和平台信息"""
-        if not os.path.exists(self.config_path):
+        """从对应平台的 config 文件加载 Cookie（支持 config.json / config_global.json）"""
+        # 优先用平台对应的 config 文件，找不到时回退通用 config.json
+        pf_key = self.platform or DEFAULT_PLATFORM
+        cfg_path = _config_file(pf_key)
+        if not os.path.exists(cfg_path):
+            cfg_path = self.config_path  # 回退
+        if not os.path.exists(cfg_path):
             return False
-        with open(self.config_path, "r", encoding="utf-8") as f:
+        with open(cfg_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         # 从 config 加载平台（如果未通过参数指定）
         if not self.platform and config.get("platform"):
@@ -413,15 +429,16 @@ class SurveyDownloader:
         return True
 
     def save_config(self, cookies_dict):
-        """保存 Cookie 和平台信息到 config.json"""
+        """保存 Cookie 和平台信息到对应平台的 config 文件"""
+        cfg_path = _config_file(self.platform or DEFAULT_PLATFORM)
         config = {
             "platform": self.platform or DEFAULT_PLATFORM,
             "cookies": cookies_dict,
             "updated_at": datetime.now().isoformat(),
         }
-        with open(self.config_path, "w", encoding="utf-8") as f:
+        with open(cfg_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
-        _log(f"Config saved to {self.config_path}")
+        _log(f"Config saved to {cfg_path}")
 
     # ── 自动刷新 Cookie ──────────────────────────────────────────────────
 
@@ -439,7 +456,7 @@ class SurveyDownloader:
         _log(f"Running refresh_cookie.py (platform={self.platform})...")
         try:
             result = subprocess.run(
-                [python_exe, refresh_script, "--timeout", "300", "--platform", self.platform],
+                [python_exe, refresh_script, "--timeout", "300", "--platform", self.platform or DEFAULT_PLATFORM],
                 capture_output=False,
                 timeout=310,
             )
@@ -1049,8 +1066,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--platform", choices=["cn", "intl"], default=None,
-        help="平台: cn=国内(163.com), intl=国外(easebar.com)。不指定时从 config.json 读取，默认 cn",
+        "--platform", choices=["cn", "global"], default=None,
+        help="平台: cn=国内(163.com), global=国外(easebar.com)。不指定时从 config.json 读取，默认 cn",
     )
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
 
