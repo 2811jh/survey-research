@@ -212,9 +212,7 @@ NPS = (推荐者 / total - 贬损者 / total) * 100  # 结果为百分比
 
 ## 五、输出文件
 
-### 默认输出：HTML 报告（一键生成）
-
-**默认使用 `html_report.py` 一键生成 HTML 满意度报告**，无需先写 Markdown。
+**使用 `html_report.py` 一键生成 HTML 满意度报告**。
 
 ```bash
 python {SKILL_DIR}/scripts/html_report.py \
@@ -225,27 +223,18 @@ python {SKILL_DIR}/scripts/html_report.py \
   --clean_desc "清洗逻辑描述" \
   --cross_cols '["Q54.性别列名","Q56.职业列名"]' \
   --theme default \
-  --output "输出路径.html"
+  --output "输出目录/报告文件名.html"
 ```
 
 > HTML 报告需要 `jinja2`，如环境缺失先执行 `pip install jinja2`
 > 主题可选: `default`(Minecraft 绿) / `dark`(深色) / `minimal`(简约)
+> `--output` 路径应指向 SKILL.md「📁 输出目录规则」中创建的文件夹
 
 HTML 报告特性：
 - **单文件离线可用**（ECharts 内联）
 - **包含交互式图表**（悬停提示、柱状图、饼图等）
 - **自动计算所有指标 + 交叉分析**
 - **可直接编辑 HTML 源码微调内容**（数据在 `REPORT_DATA` JSON 对象中）
-
-### 备选输出：Markdown + Word/Excel/TXT
-
-仅在用户明确要求 Word/Excel/TXT 格式时使用旧流程：
-1. 先撰写 Markdown 报告，保存为 `{文件名}_满意度报告.md`
-2. 调用 `report_export.py` 转换格式：
-   ```bash
-   python {SKILL_DIR}/scripts/report_export.py --input "{报告.md路径}" --format docx
-   ```
-   > Word 格式需要 `python-docx`，如环境缺失先执行 `pip install python-docx`
 
 ## 六、与其他阶段的关系
 

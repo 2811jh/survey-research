@@ -4,7 +4,7 @@ description: |
   对问卷原始数据进行全流程自动化分析，包括基础统计（频率分布 + 人口学概览）、
   交叉分析（不同人群差异对比）和文本分析（开放题主题归纳）。
   支持两种数据来源：用户提供本地 CSV/Excel 文件，或通过问卷 ID/名称从问卷系统直接下载（支持清洗）后分析。
-  输出 Markdown 摘要报告 + Word 分析报告（默认），支持转换为 Excel/TXT 格式。
+  默认输出 HTML 满意度报告（含交互式 ECharts 图表，单文件离线可用）。
   当用户要求分析问卷数据、生成问卷调研报告、对比不同人群差异、
   分析开放题文本内容时触发。即使用户没有明确说"问卷"，只要涉及
   调研数据分析、用户反馈分析、满意度分析、NPS 分析等场景也应触发此 skill。
@@ -17,7 +17,7 @@ description: |
 # 问卷研究分析（Survey Research）
 
 你是用户研究合成方面的专家，能够将原始的定性和定量数据转化为驱动产品决策的结构化洞察。帮助用户研究员从访谈、问卷、可用性测试、支持数据和行为分析中提炼有效信息。你将使用 `scripts/` 目录下的 Python 脚本，
-对用户提供的问卷原始数据进行全流程自动化分析，最终输出 Markdown 摘要报告 + Excel 详细数据。
+对用户提供的问卷原始数据进行全流程自动化分析，最终输出 HTML 满意度报告。
 
 ## 脚本路径
 
@@ -28,6 +28,7 @@ description: |
 {SKILL_DIR}/scripts/crosstab.py
 {SKILL_DIR}/scripts/text_extract.py
 {SKILL_DIR}/scripts/text_export.py
+{SKILL_DIR}/scripts/html_report.py
 {SKILL_DIR}/scripts/report_export.py
 {SKILL_DIR}/scripts/survey_download.py
 {SKILL_DIR}/scripts/refresh_cookie.py
@@ -37,10 +38,45 @@ description: |
 
 ## 依赖要求
 
-脚本依赖 `pandas`、`numpy`、`openpyxl`、`requests`。如果用户环境缺失，先执行：
+脚本依赖 `pandas`、`numpy`、`openpyxl`、`requests`、`jinja2`。如果用户环境缺失，先执行：
 ```bash
-pip install pandas numpy openpyxl requests
+pip install pandas numpy openpyxl requests jinja2
 ```
+
+---
+
+## 📁 输出目录规则
+
+**所有产出物（下载数据、统计 Excel、HTML 报告等）统一存放到一个自动创建的文件夹中**，
+避免文件散落在桌面上。
+
+### 命名规则
+
+```
+{问卷名称简称}_{问卷ID}_{时间戳}/
+```
+
+- **问卷名称简称**：取问卷名称中的核心关键词（如"MC调研"、"满意度"），去掉书名号和版本号
+- **问卷 ID**：数字 ID
+- **时间戳**：生成时的当下时间，格式为 `YYYYMMDDHHmmss`（如 `20260410170135`）
+
+**示例**：
+```
+C:\Users\xxx\Desktop\MC调研_90502_20260410170135\
+├── survey_90502【量化数据】xxx.csv          ← 下载的原始数据
+├── survey_90502【文本数据】xxx.xlsx         ← 下载的文本数据（如有）
+├── survey_90502_基础统计.xlsx               ← 基础统计结果（如有）
+├── survey_90502_交叉分析.xlsx               ← 交叉分析结果（如有）
+└── MC_满意度报告_90502_xxx.html            ← HTML 满意度报告
+```
+
+### 执行方式
+
+1. **在流程最开始**（下载数据前或分析开始前），根据命名规则在用户桌面创建文件夹
+2. **后续所有脚本的 `--output_dir` / `--output` 参数都指向该文件夹**
+3. 流程结束后告知用户："所有文件已保存在 `桌面\{文件夹名}\` 中"
+
+> ⚠️ 如果用户明确指定了输出路径，则优先使用用户指定的路径，不自动创建文件夹。
 
 ---
 
@@ -177,14 +213,10 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 
 ### 阶段 5：生成报告
 
-完成分析后根据用户意图选择对应的报告框架：
+**默认生成 HTML 满意度报告**——无论用户怎么表述（"出报告"/"分析报告"/"满意度分析"等），
+都统一使用 `html_report.py` 生成 HTML 满意度报告。
 
-| 用户表述特征 | 报告类型 | 读取文档 |
-|------------|---------|---------|
-| 模糊表述（"分析报告"/"出报告"/"全面分析"/"导出报告"等） | 通用综合报告 | → `references/14-report-workflow.md` |
-| 提到满意度/NPS/满意度变化/产品健康度/满意度周报 | 满意度专项报告 | → `references/15-satisfaction-report.md` |
-
-> 💡 未来扩展：新增报告类型只需新建 `references/1X-xxx-report.md` 并在此表中加一行即可。
+→ **读取 `references/15-satisfaction-report.md` 获取完整指标计算逻辑和报告框架。**
 
 ---
 
@@ -212,8 +244,8 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 • 做满意度专项分析（NPS + 细分维度 + 满意/不满原因 + 预警）
 
 📋 报告方面：
-• 生成综合分析报告（Markdown 格式）
-• 转换报告格式（Word / Excel / TXT）
+• 重新生成 HTML 满意度报告（调整时间范围/交叉维度等参数）
+• 微调现有报告内容（编辑 HTML 源码中的 REPORT_DATA JSON）
 ```
 
 **智能裁剪规则**——只展示当前有意义的选项：
@@ -224,7 +256,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 | 已做交叉分析 | 去掉"做交叉分析"，改为"补充其他维度的交叉分析" |
 | 已做文本分析（抽样） | 保留"对全量文本进行分析"，去掉"做文本分析" |
 | 已做文本分析（全量） | 去掉文本相关选项 |
-| 已生成报告 | 去掉"生成报告"，保留"转换格式" |
+| 已生成报告 | 去掉"生成报告"，保留"重新生成"和"微调" |
 | 数据来自本地文件（路径 A） | 去掉"清洗规则"和"时间段筛选"（这些是问卷系统功能） |
 
 **示例**——用户说"帮我做基础统计和交叉分析"，完成后：
@@ -235,7 +267,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 > - 做文本分析，归纳开放题中的核心主题和用户原声
 > - 做满意度专项分析（整体满意度 + NPS + 细分维度得分 + 预警）
 > - 补充其他维度的交叉分析（如「再对比一下不同年龄段的差异」）
-> - 生成综合分析报告（Markdown 格式，也支持转 Word/Excel/TXT）
+> - 重新生成 HTML 满意度报告（如需调整时间范围或交叉维度）
 > - 从问卷系统下载其他问卷数据（告诉我问卷名称或 ID 即可）
 
 ---
