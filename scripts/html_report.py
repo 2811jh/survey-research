@@ -79,6 +79,26 @@ def _short_label(col_name):
 #                  自动识别满意度相关题目
 # ========================================================================= #
 
+def _should_skip_question(col_name):
+    """判断是否应该跳过该题不展示在'各题统计图表'中"""
+    # 1. 非必填题
+    if '非必填' in col_name or '（非必填）' in col_name:
+        return True
+    # 2. 满意度题/满意程度题
+    if '满意度' in col_name or '满意程度' in col_name or '体验感受如何' in col_name:
+        return True
+    # 3. 含[图片]的意义不明题
+    if '[图片]' in col_name:
+        return True
+    # 4. 人口学和访谈邀约
+    q_match = re.match(r'^Q(\d+)', col_name)
+    if q_match:
+        qnum = int(q_match.group(1))
+        if qnum >= 54:  # Q54性别、Q55年龄、Q56职业、Q57-Q59访谈
+            return True
+    return False
+
+
 def _identify_questions(df, classification):
     """自动识别满意度报告所需的核心题目"""
     result = {
@@ -86,6 +106,7 @@ def _identify_questions(df, classification):
         'nps': None,             # NPS列名
         'dim_cols': [],          # 细分维度列名列表
         'dim_labels': [],        # 细分维度显示标签
+        'dim_groups': [],        # 细分维度按题目分组 [{group_title, dims}]
         'reason_cols': [],       # 不满原因列名列表(多选子列)
         'single_choice': [],     # 其他单选题
         'multi_choice': {},      # 其他多选题
@@ -145,20 +166,72 @@ def _identify_questions(df, classification):
             result['reason_cols'] = sub_cols
             break
 
-    # 5. 其他单选/多选题（排除已识别的）
+    # 4.5 按题目前缀将维度分组，使用专业化标题
+    # 关键词 → 专业标题映射
+    _title_map = {
+        '体验感受': '体验感受满意度',
+        '基础性能': '基础性能满意度',
+        '性能问题': '性能问题频率',
+        '美术画面': '美术画面满意度',
+        '界面使用': '界面使用满意度',
+        '模组': '模组体验满意度',
+        '社交': '社交体验满意度',
+        'UGC': 'UGC 玩法满意度',
+        '活动': '活动满意度',
+        '付费': '付费体验满意度',
+        '皮肤': '皮肤满意度',
+        '内容乐趣': '内容乐趣满意度',
+        '玩法乐趣': '玩法乐趣满意度',
+    }
+
+    def _professional_title(raw_title):
+        """将原始题干转为专业分组标题"""
+        for keyword, title in _title_map.items():
+            if keyword in raw_title:
+                return title
+        # 兜底: 简短化处理
+        short = re.sub(r'您对.*?的', '', raw_title)
+        short = re.sub(r'\？.*$', '', short)
+        short = re.sub(r'\*.*$', '', short)
+        short = short.strip()
+        return short if len(short) <= 12 else short[:12]
+
+    current_group = None
+    current_prefix = None
+    for col, label in zip(result['dim_cols'], result['dim_labels']):
+        # 提取 Q 编号前缀 (如 Q3, Q4, Q21)
+        m = re.match(r'^(Q\d+)', col)
+        prefix = m.group(1) if m else 'other'
+        # 提取题干
+        if ':' in col:
+            raw_title = col.split(':')[0].strip()
+            raw_title = re.sub(r'^Q\d+\.', '', raw_title).strip()
+        else:
+            raw_title = label
+
+        if prefix != current_prefix:
+            current_prefix = prefix
+            pro_title = _professional_title(raw_title)
+            current_group = {'group_title': pro_title, 'dims': []}
+            result['dim_groups'].append(current_group)
+        current_group['dims'].append({'col': col, 'label': label})
+
+    # 5. 其他单选/多选题（排除已识别的 + 过滤规则）
     identified = set()
     identified.add(result['overall_sat'])
     identified.add(result['nps'])
     identified.update(result['dim_cols'])
 
     for col in single_cols:
-        if col not in identified and not col.startswith(('Q54', 'Q55', 'Q56', 'Q57', 'Q58', 'Q59')):
-            # 跳过人口学和访谈邀约题
+        if col not in identified and not _should_skip_question(col):
             result['single_choice'].append(col)
 
     for prefix, sub_cols in multi_choice.items():
         if sub_cols != result['reason_cols']:
-            result['multi_choice'][prefix] = sub_cols
+            # 检查多选题的母题是否应该跳过
+            root_col = sub_cols[0] if sub_cols else ''
+            if not _should_skip_question(root_col):
+                result['multi_choice'][prefix] = sub_cols
 
     return result
 
@@ -220,14 +293,71 @@ def _calc_dimensions(df, dim_cols, dim_labels):
     return sorted(dims, key=lambda x: x['mean'], reverse=True)
 
 
-def _calc_reasons(df, reason_cols, total_n):
-    """计算不满原因统计"""
+def _calc_reasons(df, reason_cols, total_n, text_cols=None):
+    """计算不满原因统计，并从文本题中搜索每条原因的玩家原话"""
     stats = []
     for col in reason_cols:
         reason = col.split('？:')[-1] if '？:' in col else col.split('是？:')[-1] if '是？:' in col else _short_label(col)
         count = int(pd.to_numeric(df[col], errors='coerce').fillna(0).astype(bool).sum())
-        stats.append({'reason': reason, 'count': count, 'pct': round(count / total_n * 100, 1)})
-    return sorted(stats, key=lambda x: x['count'], reverse=True)
+        stats.append({'reason': reason, 'count': count, 'pct': round(count / total_n * 100, 1), 'quote': ''})
+    stats = sorted(stats, key=lambda x: x['count'], reverse=True)
+
+    # 从文本题中为每个原因搜索匹配的玩家原话
+    if text_cols:
+        # 合并所有文本列成一个大文本池
+        all_texts = []
+        for tc in text_cols:
+            if tc in df.columns:
+                texts = df[tc].dropna().astype(str).tolist()
+                all_texts.extend([t for t in texts if len(t) >= 4 and t not in ('无', '没有', '不知道', '暂无', 'nan')])
+
+        if all_texts:
+            for item in stats:
+                # 提取原因中的关键词用于匹配
+                reason = item['reason']
+                # 常见关键词映射
+                keywords = []
+                if '性能' in reason or '卡顿' in reason or '延迟' in reason or '闪退' in reason:
+                    keywords = ['卡顿', '延迟', '闪退', '卡', '掉帧', 'lag', '卡死']
+                elif '环境' in reason or '外挂' in reason or '破坏' in reason:
+                    keywords = ['外挂', '炸', '破坏', '骂', '挂', '恶意']
+                elif '社交' in reason or '氛围' in reason:
+                    keywords = ['社交', '好友', '聊天', '组队', '匹配']
+                elif '界面' in reason or '操作' in reason:
+                    keywords = ['界面', '操作', 'UI', '按钮', '误触', '难找']
+                elif '皮肤' in reason or '付费' in reason:
+                    keywords = ['皮肤', '付费', '贵', '充值', '氪', '抽奖', '价格']
+                elif 'UGC' in reason or '模组' in reason:
+                    keywords = ['模组', 'mod', 'MOD', '地图', '资源中心']
+                elif '基础操作' in reason or '行走' in reason or '跳跃' in reason:
+                    keywords = ['操作', '行走', '跳跃', '手感', '不流畅']
+                elif '信誉' in reason or '禁言' in reason or '举报' in reason:
+                    keywords = ['禁言', '举报', '封号', '信誉']
+                elif 'BUG' in reason or 'bug' in reason.lower():
+                    keywords = ['bug', 'BUG', 'Bug', '漏洞', '异常']
+                elif '新手' in reason or '教学' in reason:
+                    keywords = ['新手', '教程', '引导', '教学']
+                elif '福利' in reason or '奖励' in reason:
+                    keywords = ['福利', '奖励', '白嫖', '送']
+                elif '更新' in reason or '版本' in reason:
+                    keywords = ['更新', '版本', '速度慢']
+                elif '存档' in reason or '丢失' in reason:
+                    keywords = ['存档', '丢', '丢失', '消失']
+                elif '屏蔽' in reason or '聊天' in reason:
+                    keywords = ['屏蔽', '聊天', '屏蔽词']
+                else:
+                    # 用原因文本中的关键字
+                    keywords = [reason[:2]] if len(reason) >= 2 else [reason]
+
+                # 在文本池中搜索匹配
+                for text in all_texts:
+                    if any(kw in text for kw in keywords):
+                        # 找到匹配，截取合适长度
+                        quote = text[:80] + ('...' if len(text) > 80 else '')
+                        item['quote'] = f'"{quote}"'
+                        break
+
+    return stats
 
 
 def _calc_question_stats(df, col, total_n):
@@ -359,6 +489,69 @@ def _calc_cross_dimensions(df, dim_cols, dim_labels, group_col):
 
 
 # ========================================================================= #
+#                  自动结论生成
+# ========================================================================= #
+
+def _generate_macro_conclusion(overall, nps_data):
+    """生成宏观大盘结论"""
+    parts = []
+    if overall:
+        mean = overall.get('mean', 0)
+        top2 = overall.get('top2', 0)
+        if mean >= 4.0:
+            parts.append(f"整体满意度 {mean} 分，玩家评价较好，满意率达 {top2}%。")
+        elif mean >= 3.5:
+            parts.append(f"整体满意度 {mean} 分，处于中等水平，满意率 {top2}%。")
+        else:
+            parts.append(f"整体满意度仅 {mean} 分，低于健康线，需重点关注。")
+    if nps_data:
+        nps = nps_data.get('value', 0)
+        if nps > 30:
+            parts.append(f"NPS 得分 {nps}%，保持在优秀区间。")
+        elif nps >= 0:
+            parts.append(f"NPS 得分 {nps}%，尚有提升空间。")
+        else:
+            parts.append(f"NPS 得分 {nps}%，贬损者多于推荐者，口碑承压。")
+    return ' '.join(parts) if parts else ''
+
+
+def _generate_reason_conclusion(reasons):
+    """生成不满原因结论"""
+    if not reasons:
+        return ''
+    top3 = reasons[:3]
+    names = '、'.join([r['reason'] for r in top3])
+    return f"玩家不满原因集中在{names}，占比分别为{'、'.join([str(r['pct'])+'%' for r in top3])}。"
+
+
+def _generate_dim_conclusion(group_title, dims):
+    """根据维度数据自动生成一句结论"""
+    if not dims:
+        return ''
+    best = dims[0]  # 已排序，第一个是最高分
+    worst = dims[-1]  # 最后一个是最低分
+    avg = round(sum(d['mean'] for d in dims) / len(dims), 2)
+
+    # 检查是否有预警项
+    alerts = [d for d in dims if d['mean'] < 3.5 or d['bot2'] > 20]
+
+    if len(dims) == 1:
+        d = dims[0]
+        if d['mean'] >= 4.0:
+            return f"均值 {d['mean']} 分，满意率 {d['top2']}%，整体表现良好。"
+        elif d['mean'] >= 3.5:
+            return f"均值 {d['mean']} 分，表现中等，不满率 {d['bot2']}% 需留意。"
+        else:
+            return f"均值仅 {d['mean']} 分，不满率 {d['bot2']}%，需重点关注。"
+
+    if not alerts:
+        return f"整体均值 {avg} 分，其中「{best['name']}」得分最高（{best['mean']}），各项均在健康区间。"
+    else:
+        alert_names = '、'.join([f"「{d['name']}」" for d in alerts[:3]])
+        return f"整体均值 {avg} 分，「{best['name']}」表现最佳（{best['mean']}），但 {alert_names} 需关注（不满率超 {alerts[0]['bot2']}%）。"
+
+
+# ========================================================================= #
 #                  预警检测
 # ========================================================================= #
 
@@ -449,11 +642,14 @@ def _render_html(report_data, theme='default'):
         meta=report_data['meta'],
         overall=report_data['overall'],
         nps=report_data['nps'],
+        macro_conclusion=report_data.get('macro_conclusion', ''),
         cross_overall=report_data.get('cross_overall'),
         dimensions=report_data['dimensions'],
-        cross_dimensions=report_data.get('cross_dimensions'),
+        dim_groups=report_data.get('dim_groups', []),
         reasons=report_data.get('reasons', []),
-        questions=report_data.get('questions', []),
+        reason_conclusion=report_data.get('reason_conclusion', ''),
+        gaming_genres=report_data.get('gaming_genres', []),
+        gaming_titles=report_data.get('gaming_titles', []),
         alerts=report_data.get('alerts', []),
         echarts_js=echarts_js,
         report_data_json=report_data_json,
@@ -510,7 +706,38 @@ def generate_report(
     overall = _calc_overall(df, questions_map['overall_sat']) if questions_map['overall_sat'] else {}
     nps_data = _calc_nps(df, questions_map['nps']) if questions_map['nps'] else {}
     dimensions = _calc_dimensions(df, questions_map['dim_cols'], questions_map['dim_labels'])
-    reasons = _calc_reasons(df, questions_map['reason_cols'], total_n) if questions_map['reason_cols'] else []
+
+    # 计算按题目分组的维度数据 + 自动结论 + 展示类型
+    dim_groups_data = []
+    for group in questions_map['dim_groups']:
+        group_dims = []
+        for d in group['dims']:
+            s = _to_numeric_series(df, d['col'])
+            if len(s) == 0:
+                continue
+            group_dims.append({
+                'name': d['label'],
+                'mean': round(float(s.mean()), 2),
+                'top2': round(float((s >= 4).mean()) * 100, 1),
+                'bot2': round(float((s <= 2).mean()) * 100, 1),
+                'n': int(len(s)),
+            })
+        if group_dims:
+            sorted_dims = sorted(group_dims, key=lambda x: x['mean'], reverse=True)
+            # 展示类型: 少于4项用 KPI 卡片，>=4项用表格+柱状图
+            display_type = 'kpi' if len(sorted_dims) < 4 else 'chart'
+            # 自动生成结论
+            conclusion = _generate_dim_conclusion(group['group_title'], sorted_dims)
+            dim_groups_data.append({
+                'group_title': group['group_title'],
+                'dims': sorted_dims,
+                'display_type': display_type,
+                'conclusion': conclusion,
+            })
+
+    # 不满原因（传入文本列用于搜索玩家原话）
+    text_cols = classification.get('text', [])
+    reasons = _calc_reasons(df, questions_map['reason_cols'], total_n, text_cols=text_cols) if questions_map['reason_cols'] else []
 
     # 5. 交叉分析
     cross_overall = OrderedDict()
@@ -539,39 +766,41 @@ def generate_report(
                 df, questions_map['dim_cols'], questions_map['dim_labels'], group_col
             )
 
-    # 6. 单选/多选题统计
-    print(f"[html_report] Computing question statistics...", file=sys.stderr)
-    question_charts = []
+    # 6. 玩家画像 — 手游类型 & 具体手游
+    print(f"[html_report] Extracting gaming profile...", file=sys.stderr)
+    gaming_genres = []  # 手游类型 (TreeMap)
+    gaming_titles = []  # 具体手游 (Top20 排行榜)
 
-    # 单选题 → 选项 <= 6 用饼图，>6 用柱状图
-    for col in questions_map['single_choice'][:15]:  # 最多15题，避免报告太长
-        options = _calc_question_stats(df, col, total_n)
-        if options and len(options) >= 2:
-            question_charts.append({
-                'title': _short_label(col),
-                'chart_type': 'pie' if len(options) <= 6 else 'bar',
-                'options': options,
-            })
-
-    # 多选题 → 横向柱状图
-    count = 0
     for prefix, sub_cols in questions_map['multi_choice'].items():
-        if count >= 10:
-            break
-        options = _calc_multi_question_stats(df, sub_cols, total_n)
-        if options and len(options) >= 2:
-            # 用第一个子列的题干作为标题
-            title = sub_cols[0].split('？:')[0].split('是？')[0] if '？:' in sub_cols[0] or '是？' in sub_cols[0] else prefix
-            title = _short_label(title) if len(title) > 60 else title
-            question_charts.append({
-                'title': title,
-                'chart_type': 'bar',
-                'options': options,
-            })
-            count += 1
+        first_col = sub_cols[0] if sub_cols else ''
+        # 手游类型 (Q42)
+        if '常玩' in first_col and '手机游戏' in first_col and '类' in first_col:
+            for col in sub_cols:
+                label = col.split('？:')[-1] if '？:' in col else col.split(':')[-1]
+                label = label.strip()
+                if '没在玩' in label or '其他' in label:
+                    continue
+                cnt = int(pd.to_numeric(df[col], errors='coerce').fillna(0).astype(bool).sum())
+                if cnt > 0:
+                    gaming_genres.append({'name': label, 'value': cnt, 'pct': round(cnt / total_n * 100, 1)})
+            gaming_genres = sorted(gaming_genres, key=lambda x: x['value'], reverse=True)
+        # 具体手游 (Q43)
+        elif '目前在玩' in first_col and '手机游戏' in first_col:
+            for col in sub_cols:
+                label = col.split(':')[-1].strip()
+                if not label or '其他' in label:
+                    continue
+                cnt = int(pd.to_numeric(df[col], errors='coerce').fillna(0).astype(bool).sum())
+                if cnt > 0:
+                    gaming_titles.append({'name': label, 'value': cnt, 'pct': round(cnt / total_n * 100, 1)})
+            gaming_titles = sorted(gaming_titles, key=lambda x: x['value'], reverse=True)[:20]
 
     # 7. 预警
     alerts = _check_alerts(overall, nps_data, dimensions)
+
+    # 7.5 自动生成结论
+    macro_conclusion = _generate_macro_conclusion(overall, nps_data)
+    reason_conclusion = _generate_reason_conclusion(reasons)
 
     # 8. 组装数据
     report_data = {
@@ -585,11 +814,14 @@ def generate_report(
         },
         'overall': overall,
         'nps': nps_data,
+        'macro_conclusion': macro_conclusion,
         'dimensions': dimensions,
+        'dim_groups': dim_groups_data,
         'cross_overall': dict(cross_overall) if cross_overall else None,
-        'cross_dimensions': dict(cross_dimensions) if cross_dimensions else None,
         'reasons': reasons,
-        'questions': question_charts,
+        'reason_conclusion': reason_conclusion,
+        'gaming_genres': gaming_genres,
+        'gaming_titles': gaming_titles,
         'alerts': alerts,
     }
 

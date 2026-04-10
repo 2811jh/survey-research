@@ -201,6 +201,37 @@ table.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .chart-row { display: flex; gap: 20px; flex-wrap: wrap; }
 .chart-half { flex: 1; min-width: 400px; }
 
+/* ---- 模块结论 ---- */
+.section-conclusion {
+  margin: -8px 0 16px;
+  padding: 12px 16px;
+  background: var(--accent-light);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  border-left: 3px solid var(--accent);
+}
+
+/* ---- KPI 网格 (维度<4项时使用) ---- */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 12px 0; }
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.kpi-card .kpi-name { font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+.kpi-card .kpi-score { font-size: 32px; font-weight: 800; }
+.kpi-card .kpi-score.good { color: var(--success); }
+.kpi-card .kpi-score.mid { color: var(--warning); }
+.kpi-card .kpi-score.bad { color: var(--danger); }
+.kpi-card .kpi-bar { height: 6px; background: var(--gauge-bg); border-radius: 3px; margin: 10px 0 4px; overflow: hidden; }
+.kpi-card .kpi-bar-fill { height: 100%; border-radius: 3px; }
+.kpi-card .kpi-detail { font-size: 12px; color: var(--text-muted); }
+
 /* ---- 预警卡片 ---- */
 .alert-card {
   display: flex; align-items: center; gap: 12px;
@@ -265,6 +296,7 @@ table.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
      ================================================================ -->
 <div class="card" id="section-macro">
   <h2>一、宏观大盘</h2>
+  {% if macro_conclusion %}<div class="section-conclusion">📊 {{ macro_conclusion }}</div>{% endif %}
 
   <div class="kpi-row">
     <div class="kpi-box">
@@ -330,11 +362,85 @@ table.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 {% endif %}
 
 <!-- ================================================================
-     区块 3: 细分维度满意度
+     区块 3: 不满原因 Top10 (前移到维度之前)
+     ================================================================ -->
+{% if reasons %}
+<div class="card" id="section-reasons">
+  <h2>三、不满原因 Top10</h2>
+  {% if reason_conclusion %}<div class="section-conclusion">⚠️ {{ reason_conclusion }}</div>{% endif %}
+  <div id="chart-reasons" class="chart-box"></div>
+  <table class="data-table">
+    <thead><tr><th>排名</th><th>原因</th><th class="num">占总样本比</th><th>玩家原话</th></tr></thead>
+    <tbody>
+    {% for r in reasons[:10] %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ r.reason }}</td>
+        <td class="num">{{ r.pct }}%</td>
+        <td style="font-size:12px;color:var(--text-secondary);max-width:360px;">{{ r.quote }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- ================================================================
+     区块 4: 细分维度满意度 (按题目分组)
      ================================================================ -->
 <div class="card" id="section-dimensions">
-  <h2>三、细分维度满意度</h2>
+  <h2>四、细分维度满意度</h2>
 
+  {% if dim_groups %}
+  {% for group in dim_groups %}
+  <h3 style="margin-top:24px;padding:8px 12px;background:var(--accent-light);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;">{{ group.group_title }}</h3>
+  {% if group.conclusion %}<div class="section-conclusion" style="margin-top:8px;">{{ group.conclusion }}</div>{% endif %}
+
+  {% if group.display_type == 'kpi' %}
+  {# ---- 少于4项：KPI 卡片展示 ---- #}
+  <div class="kpi-grid">
+    {% for dim in group.dims %}
+    <div class="kpi-card">
+      <div class="kpi-name">{{ dim.name }}</div>
+      <div class="kpi-score {% if dim.mean >= 4.0 %}good{% elif dim.mean >= 3.5 %}mid{% else %}bad{% endif %}">{{ dim.mean }}</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:{{ (dim.mean / 5 * 100)|round }}%;background:{% if dim.mean >= 4.0 %}var(--success){% elif dim.mean >= 3.5 %}var(--warning){% else %}var(--danger){% endif %};"></div></div>
+      <div class="kpi-detail">满意率 {{ dim.top2 }}% · 不满率 {{ dim.bot2 }}% {% if dim.bot2 > 20 %}<span class="badge badge-warning" style="margin-left:4px;">⚠️</span>{% elif dim.mean < 3.0 %}<span class="badge badge-danger" style="margin-left:4px;">🔻</span>{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  {# ---- 4项及以上：表格 + 柱状图 ---- #}
+  <table class="data-table" style="margin-bottom:4px;">
+    <thead>
+      <tr>
+        <th>排名</th><th>维度</th><th class="num">均值</th>
+        <th class="num">满意率(Top2)</th><th class="num">不满率(Bot2)</th><th>状态</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for dim in group.dims %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ dim.name }}</td>
+        <td class="num">{{ dim.mean }}</td>
+        <td class="num">{{ dim.top2 }}%</td>
+        <td class="num">{{ dim.bot2 }}%</td>
+        <td>
+          {% if dim.mean < 3.0 %}<span class="badge badge-danger">🔻 重点关注</span>
+          {% elif dim.bot2 > 20 %}<span class="badge badge-warning">⚠️ 需关注</span>
+          {% else %}<span class="badge badge-success">✅</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div id="chart-dimgroup-{{ loop.index0 }}" class="chart-box-sm"></div>
+  {% endif %}
+
+  {% endfor %}
+  {% else %}
+  {# 兜底：没有分组就用老的扁平列表 #}
   <table class="data-table">
     <thead>
       <tr>
@@ -360,52 +466,28 @@ table.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
     </tbody>
   </table>
   <div id="chart-dimensions" class="chart-box"></div>
+  {% endif %}
 </div>
 
 <!-- ================================================================
-     区块 4: 交叉分析 — 细分维度 × 性别/职业
+     区块 5: 玩家画像 — 常玩手游类型
      ================================================================ -->
-{% if cross_dimensions %}
-<div class="card" id="section-cross-dimensions">
-  <h2>四、细分维度 × 人群交叉</h2>
-  {% for group_name, group_data in cross_dimensions.items() %}
-  <h3>按{{ group_name }}分组 — 各维度均值对比</h3>
-  <div id="chart-cross-dim-{{ loop.index0 }}" class="chart-box"></div>
-  {% endfor %}
-</div>
-{% endif %}
-
-<!-- ================================================================
-     区块 5: 不满原因 Top10
-     ================================================================ -->
-{% if reasons %}
-<div class="card" id="section-reasons">
-  <h2>五、不满原因 Top10</h2>
-  <div id="chart-reasons" class="chart-box"></div>
-  <table class="data-table">
-    <thead><tr><th>排名</th><th>原因</th><th class="num">占总样本比</th></tr></thead>
-    <tbody>
-    {% for r in reasons[:10] %}
-      <tr><td>{{ loop.index }}</td><td>{{ r.reason }}</td><td class="num">{{ r.pct }}%</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+{% if gaming_genres %}
+<div class="card" id="section-gaming-genres">
+  <h2>五、玩家常玩手游类型</h2>
+  <div class="section-conclusion">🎮 玩家常玩的手游类型中，「{{ gaming_genres[0].name }}」占比最高（{{ gaming_genres[0].pct }}%），其次是「{{ gaming_genres[1].name }}」（{{ gaming_genres[1].pct }}%）和「{{ gaming_genres[2].name }}」（{{ gaming_genres[2].pct }}%）。</div>
+  <div id="chart-gaming-treemap" style="width:100%;height:440px;margin:12px 0;"></div>
 </div>
 {% endif %}
 
 <!-- ================================================================
-     区块 6: 单选 / 多选题图表
-     可编辑: 删除不需要的题目 section
+     区块 6: 玩家画像 — 具体在玩手游 Top20
      ================================================================ -->
-{% if questions %}
-<div class="card" id="section-questions">
-  <h2>六、各题统计图表</h2>
-  {% for q in questions %}
-  <div class="question-block" style="margin-bottom:28px;">
-    <h3>{{ q.title }}</h3>
-    <div id="chart-q-{{ loop.index0 }}" class="chart-box-sm"></div>
-  </div>
-  {% endfor %}
+{% if gaming_titles %}
+<div class="card" id="section-gaming-titles">
+  <h2>六、玩家在玩手游 Top20</h2>
+  <div class="section-conclusion">🏆 具体手游中，「{{ gaming_titles[0].name }}」以 {{ gaming_titles[0].pct }}% 的渗透率领跑，「{{ gaming_titles[1].name }}」（{{ gaming_titles[1].pct }}%）和「{{ gaming_titles[2].name }}」（{{ gaming_titles[2].pct }}%）紧随其后。</div>
+  <div id="chart-gaming-ranking" style="width:100%;height:520px;margin:12px 0;"></div>
 </div>
 {% endif %}
 
@@ -540,8 +622,26 @@ const REPORT_DATA = {{ report_data_json }};
     }
   }
 
-  /* ---- 细分维度满意度 ---- */
-  if (D.dimensions && D.dimensions.length > 0) {
+  /* ---- 细分维度满意度 (按分组, 仅 chart 类型) ---- */
+  if (D.dim_groups && D.dim_groups.length > 0) {
+    D.dim_groups.forEach(function(group, gi) {
+      if (group.display_type === 'kpi') return;  // KPI 卡片不需要图表
+      var gDims = group.dims;
+      var gNames = gDims.map(function(d){return d.name;}).reverse();
+      var gMeans = gDims.map(function(d){return d.mean;}).reverse();
+      var gColors = gMeans.map(function(v){ return v < 3.0 ? '#e53935' : (v < 3.5 ? '#ff9800' : '#4caf50'); });
+      initChart('chart-dimgroup-' + gi, {
+        tooltip: { trigger: 'axis', formatter: function(p){ return p[0].name + ': ' + p[0].value + '/5.0'; }},
+        xAxis: { type: 'value', min: 1, max: 5, axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
+        yAxis: { type: 'category', data: gNames, axisLine: { lineStyle: { color: axisColor }}},
+        series: [{ type: 'bar', data: gMeans.map(function(v,i){ return {value:v, itemStyle:{color:gColors[i]}}; }),
+          label: { show: true, position: 'right', formatter: '{c}', color: textColor },
+          barWidth: Math.min(55, Math.max(30, 180/gNames.length)) + '%' }],
+        grid: { left: 180, right: 60, top: 20, bottom: 20 }
+      });
+    });
+  } else if (D.dimensions && D.dimensions.length > 0) {
+    /* 兜底: 扁平列表 */
     var dimNames = D.dimensions.map(function(d){return d.name;}).reverse();
     var dimMeans = D.dimensions.map(function(d){return d.mean;}).reverse();
     var dimColors = dimMeans.map(function(v){ return v < 3.0 ? '#e53935' : (v < 3.5 ? '#ff9800' : '#4caf50'); });
@@ -555,34 +655,6 @@ const REPORT_DATA = {{ report_data_json }};
         barWidth: '50%' }],
       grid: { left: 160, right: 60, top: 50, bottom: 20 }
     });
-  }
-
-  /* ---- 交叉-细分维度 ---- */
-  if (D.cross_dimensions) {
-    var idx2 = 0;
-    for (var gName2 in D.cross_dimensions) {
-      var cdData = D.cross_dimensions[gName2];
-      var groupNames = cdData.groups;
-      var dimList = cdData.dimensions;
-      var series = groupNames.map(function(g, gi) {
-        return {
-          name: g, type: 'bar',
-          data: dimList.map(function(d){ return d.values[gi]; }),
-          itemStyle: { color: COLORS[gi % COLORS.length], borderRadius: [4,4,0,0] },
-          barWidth: Math.max(10, 50/groupNames.length) + '%'
-        };
-      });
-      initChart('chart-cross-dim-' + idx2, {
-        title: { text: '按' + gName2 + ' — 各维度满意度对比', left: 'center', textStyle: { fontSize: 14, color: textColor }},
-        tooltip: { trigger: 'axis' },
-        legend: { data: groupNames, top: 30 },
-        xAxis: { type: 'category', data: dimList.map(function(d){return d.name;}), axisLabel: { rotate: 30 }, axisLine: { lineStyle: { color: axisColor }}},
-        yAxis: { type: 'value', min: 1, max: 5, axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
-        series: series,
-        grid: { left: 60, right: 20, top: 70, bottom: 80 }
-      });
-      idx2++;
-    }
   }
 
   /* ---- 不满原因 Top10 ---- */
@@ -602,40 +674,101 @@ const REPORT_DATA = {{ report_data_json }};
     });
   }
 
-  /* ---- 单选/多选题图表 ---- */
-  if (D.questions) {
-    D.questions.forEach(function(q, qi) {
-      var chartId = 'chart-q-' + qi;
-      if (q.chart_type === 'pie') {
-        initChart(chartId, {
-          tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-          series: [{ type: 'pie', radius: ['35%','65%'], data: q.options.map(function(o,i){ return {name:o.label, value:o.count, itemStyle:{color:COLORS[i%COLORS.length]}}; }),
-            label: { formatter: '{b}\n{d}%', fontSize: 12 }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' }}}]
-        });
-      } else {
-        var oLabels = q.options.map(function(o){return o.label;});
-        var oCounts = q.options.map(function(o){return o.count;});
-        if (q.options.length > 6) {
-          oLabels = oLabels.reverse();
-          oCounts = oCounts.reverse();
-          initChart(chartId, {
-            tooltip: { trigger: 'axis', formatter: function(p){ return p[0].name + ': ' + p[0].value + '人 (' + (p[0].value/D.meta.total_n*100).toFixed(1) + '%)'; }},
-            xAxis: { type: 'value', axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
-            yAxis: { type: 'category', data: oLabels, axisLine: { lineStyle: { color: axisColor }}},
-            series: [{ type: 'bar', data: oCounts, itemStyle: { color: '#66bb6a', borderRadius: [0,4,4,0] }, barWidth: '55%' }],
-            grid: { left: 200, right: 40, top: 20, bottom: 20 }
-          });
-        } else {
-          initChart(chartId, {
-            tooltip: { trigger: 'axis' },
-            xAxis: { type: 'category', data: oLabels, axisLabel: { rotate: oLabels.some(function(l){return l.length > 6;}) ? 25 : 0 }, axisLine: { lineStyle: { color: axisColor }}},
-            yAxis: { type: 'value', axisLine: { lineStyle: { color: axisColor }}, splitLine: { lineStyle: { color: axisColor }}},
-            series: [{ type: 'bar', data: oCounts.map(function(v,i){ return {value:v, itemStyle:{color:COLORS[i%COLORS.length]}}; }), barWidth: '45%',
-              itemStyle: { borderRadius: [4,4,0,0] } }],
-            grid: { left: 60, right: 20, top: 20, bottom: 60 }
-          });
+  /* ---- 手游类型 TreeMap ---- */
+  if (D.gaming_genres && D.gaming_genres.length > 0) {
+    var treemapColors = ['#2e7d32','#43a047','#66bb6a','#81c784','#a5d6a7','#c8e6c9',
+      '#ff9800','#ffa726','#ffb74d','#ffcc80','#2196f3','#42a5f5','#64b5f6','#90caf9'];
+    initChart('chart-gaming-treemap', {
+      tooltip: {
+        formatter: function(p) {
+          return '<b>' + p.name + '</b><br/>选择人数: ' + p.value + '人<br/>占比: ' + (p.value/D.meta.total_n*100).toFixed(1) + '%';
         }
-      }
+      },
+      series: [{
+        type: 'treemap',
+        roam: false,
+        nodeClick: false,
+        breadcrumb: { show: false },
+        label: {
+          show: true,
+          formatter: function(p) { return p.name + '\n' + (p.value/D.meta.total_n*100).toFixed(1) + '%'; },
+          fontSize: 13,
+          fontWeight: 'bold',
+          color: '#fff',
+          textShadowColor: 'rgba(0,0,0,0.3)',
+          textShadowBlur: 4
+        },
+        itemStyle: { borderColor: '#fff', borderWidth: 2, gapWidth: 2 },
+        levels: [{
+          itemStyle: { borderColor: '#fff', borderWidth: 3, gapWidth: 3 },
+          upperLabel: { show: false }
+        }],
+        data: D.gaming_genres.map(function(g, i) {
+          return { name: g.name, value: g.value, itemStyle: { color: treemapColors[i % treemapColors.length] } };
+        })
+      }]
+    });
+  }
+
+  /* ---- 具体手游 Top20 渐变排行榜 ---- */
+  if (D.gaming_titles && D.gaming_titles.length > 0) {
+    var top20 = D.gaming_titles.slice(0, 20);
+    var tNames = top20.map(function(t){return t.name;}).reverse();
+    var tValues = top20.map(function(t){return t.value;}).reverse();
+    var maxVal = top20[0].value;
+    initChart('chart-gaming-ranking', {
+      tooltip: {
+        trigger: 'axis',
+        formatter: function(p) { return '🎮 ' + p[0].name + '<br/>选择人数: ' + p[0].value + '人<br/>渗透率: ' + (p[0].value/D.meta.total_n*100).toFixed(1) + '%'; }
+      },
+      xAxis: {
+        type: 'value',
+        axisLine: { lineStyle: { color: axisColor }},
+        splitLine: { lineStyle: { color: axisColor, type: 'dashed' }},
+        axisLabel: { formatter: function(v) { return (v/1000).toFixed(0) + 'k'; }}
+      },
+      yAxis: {
+        type: 'category',
+        data: tNames,
+        axisLine: { lineStyle: { color: axisColor }},
+        axisLabel: {
+          fontSize: 13,
+          color: textColor,
+          formatter: function(v) {
+            var rank = top20.length - tNames.indexOf(v);
+            var prefix = rank <= 3 ? ['🥇','🥈','🥉'][rank-1] + ' ' : rank + '. ';
+            return prefix + v;
+          }
+        }
+      },
+      series: [{
+        type: 'bar',
+        data: tValues.map(function(v, i) {
+          var ratio = v / maxVal;
+          var r = Math.round(76 * (1 - ratio) + 46 * ratio);
+          var g = Math.round(175 * (1 - ratio) + 125 * ratio);
+          var b = Math.round(80 * (1 - ratio) + 50 * ratio);
+          return {
+            value: v,
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0, color: 'rgba(' + r + ',' + g + ',' + b + ',0.85)' },
+                { offset: 1, color: 'rgba(' + r + ',' + g + ',' + b + ',0.45)' }
+              ]),
+              borderRadius: [0, 6, 6, 0]
+            }
+          };
+        }),
+        barWidth: '60%',
+        label: {
+          show: true,
+          position: 'right',
+          formatter: function(p) { return p.value + '人 (' + (p.value/D.meta.total_n*100).toFixed(1) + '%)'; },
+          fontSize: 11,
+          color: textColor
+        }
+      }],
+      grid: { left: 130, right: 110, top: 10, bottom: 20 }
     });
   }
 
