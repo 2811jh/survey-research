@@ -118,12 +118,12 @@ C:\Users\xxx\Desktop\MC调研_90502_20260410170135\
    # 搜索问卷
    python {SKILL_DIR}/scripts/survey_download.py --platform cn search --name "关键词"
 
-   # 下载问卷
-   python {SKILL_DIR}/scripts/survey_download.py --platform cn download --id 问卷ID --output_dir "输出目录"
+   # 下载问卷（--skip-existing 避免重复下载已有文件）
+   python {SKILL_DIR}/scripts/survey_download.py --platform cn download --id 问卷ID --skip-existing --output_dir "输出目录"
 
    # 清洗预览 → 确认 → 清洗下载
    python {SKILL_DIR}/scripts/survey_download.py --platform cn clean --id 问卷ID --dry-run
-   python {SKILL_DIR}/scripts/survey_download.py --platform cn download --id 问卷ID --clean --output_dir "输出目录"
+   python {SKILL_DIR}/scripts/survey_download.py --platform cn download --id 问卷ID --clean --skip-existing --output_dir "输出目录"
    ```
 
 3. **确定分析用的文件**：
