@@ -158,7 +158,7 @@ def _merge_csv_files(file_list, output_path):
 def _merge_xlsx_files(file_list, output_path):
     """
     合并多个 XLSX 分片文件为一个 CSV 文件（大文件 XLSX 合并太慢，转为 CSV 更实用）。
-    需要 pandas + openpyxl。如果不可用，回退为保留分片。
+    需要 pandas。读取引擎优先级：calamine（Rust，最快）→ openpyxl（通用）。
     output_path: 原始目标路径（.xlsx），会自动改为 .csv
     """
     try:
@@ -168,24 +168,57 @@ def _merge_xlsx_files(file_list, output_path):
         _log("  Install with: pip install pandas openpyxl")
         return None
 
+    # 选择最快的可用引擎
+    engine = 'openpyxl'  # 默认
+    try:
+        import python_calamine  # noqa: F401
+        engine = 'calamine'
+    except ImportError:
+        pass
+
     # 将输出路径改为 .csv
     csv_output = os.path.splitext(output_path)[0] + ".csv"
     file_list.sort()
-    _log(f"Merging {len(file_list)} XLSX files → CSV...")
+    total_size_mb = sum(os.path.getsize(f) for f in file_list) / 1024 / 1024
+    _log(f"Merging {len(file_list)} XLSX files → CSV (total {total_size_mb:.1f} MB, engine={engine})...")
+
     try:
-        dfs = []
-        for fpath in file_list:
-            _log(f"  Reading: {os.path.basename(fpath)}...")
-            df = pd.read_excel(fpath, engine='openpyxl')
-            dfs.append(df)
-        merged = pd.concat(dfs, ignore_index=True)
-        _log(f"  Writing merged CSV ({len(merged):,} rows)...")
-        merged.to_csv(csv_output, index=False, encoding='utf-8-sig')
+        # 对于大文件（>15MB），采用流式写入避免内存峰值
+        if total_size_mb > 15:
+            _log(f"  Large files detected, using streaming merge...")
+            header_written = False
+            total_rows = 0
+            with open(csv_output, 'w', encoding='utf-8-sig', newline='') as out_f:
+                import csv
+                writer = None
+                for fpath in file_list:
+                    _log(f"  Reading: {os.path.basename(fpath)} ({os.path.getsize(fpath)/1024/1024:.1f} MB)...")
+                    # 分块读取大 XLSX，每次 5000 行
+                    chunks = pd.read_excel(fpath, engine=engine, header=0 if not header_written else 0)
+                    if not header_written:
+                        chunks.to_csv(out_f, index=False, header=True, lineterminator='\n')
+                        header_written = True
+                    else:
+                        chunks.to_csv(out_f, index=False, header=False, lineterminator='\n')
+                    total_rows += len(chunks)
+                    _log(f"    → {len(chunks):,} rows read")
+            _log(f"  Total: {total_rows:,} rows")
+        else:
+            dfs = []
+            for fpath in file_list:
+                _log(f"  Reading: {os.path.basename(fpath)}...")
+                df = pd.read_excel(fpath, engine=engine)
+                dfs.append(df)
+            merged = pd.concat(dfs, ignore_index=True)
+            total_rows = len(merged)
+            _log(f"  Writing merged CSV ({total_rows:,} rows)...")
+            merged.to_csv(csv_output, index=False, encoding='utf-8-sig')
+
         # 删除原始分片
         for f in file_list:
             os.remove(f)
         merged_size = os.path.getsize(csv_output)
-        _log(f"Merged: {csv_output} ({len(merged):,} rows, {merged_size:,} bytes)")
+        _log(f"Merged: {csv_output} ({total_rows:,} rows, {merged_size:,} bytes)")
         return csv_output
     except Exception as e:
         _log(f"WARNING: XLSX merge failed: {e}. Keeping split files.")
@@ -863,7 +896,7 @@ class SurveyDownloader:
 
     def run(self, survey_id=None, survey_name=None, export_type="both",
             start_date=None, end_date=None, output_dir=None, select_index=None,
-            clean=False):
+            clean=False, skip_existing=False):
         """
         主入口：搜索问卷 → (可选)自动清洗 → 触发导出 → 等待完成 → 下载文件
         export_type: "both" | "text" | "quantified"
@@ -1012,8 +1045,48 @@ class SurveyDownloader:
         if export_type in ("both", "quantified"):
             types_to_export.append((1, "quantified"))
 
-        # 6. 触发导出
-        for dt, dt_name in types_to_export:
+        # 5.5 skip-existing: 检查输出目录中是否已有同问卷同类型的数据文件
+        if not output_dir:
+            output_dir = os.getcwd()
+        os.makedirs(output_dir, exist_ok=True)
+
+        files = {}
+        types_need_download = []
+        if skip_existing:
+            for dt, dt_name in types_to_export:
+                type_label = "文本数据" if dt == 0 else "量化数据"
+                pattern = f"survey_{target_id}【{type_label}】"
+                existing = [
+                    f for f in os.listdir(output_dir)
+                    if f.startswith(pattern) and (f.endswith('.csv') or f.endswith('.xlsx'))
+                ]
+                if existing:
+                    # 取最新的文件（按修改时间排序）
+                    existing.sort(key=lambda f: os.path.getmtime(os.path.join(output_dir, f)), reverse=True)
+                    found = os.path.join(output_dir, existing[0])
+                    _log(f"Skip download: found existing {dt_name} file → {existing[0]} ({os.path.getsize(found):,} bytes)")
+                    files[f"{dt_name}_data"] = os.path.abspath(found)
+                else:
+                    types_need_download.append((dt, dt_name))
+        else:
+            types_need_download = list(types_to_export)
+
+        # 如果所有文件都已存在，直接返回
+        if not types_need_download:
+            _log("All requested files already exist, skipping download entirely")
+            result = {
+                "status": "success",
+                "survey_name": target_name,
+                "survey_id": target_id,
+                "files": files,
+                "skipped": True,
+            }
+            if clean_result:
+                result["clean"] = clean_result
+            return result
+
+        # 6. 触发导出（仅针对需要下载的类型）
+        for dt, dt_name in types_need_download:
             _log(f"Triggering {dt_name} data export (dataType={dt})...")
             result = self.trigger_export(target_id, dt, begin_ts, end_ts, questions)
             if result.get("resultCode") != 100:
@@ -1024,7 +1097,7 @@ class SurveyDownloader:
             _log(f"{dt_name} export triggered successfully")
 
         # 7. 等待导出完成
-        target_type_set = {dt for dt, _ in types_to_export}
+        target_type_set = {dt for dt, _ in types_need_download}
         _log("Waiting for export to complete...")
         wait_result = self.wait_for_export(target_id, target_type_set)
         if wait_result["status"] != "success":
@@ -1033,12 +1106,7 @@ class SurveyDownloader:
         _log("Export completed!")
 
         # 8. 下载文件
-        if not output_dir:
-            output_dir = os.getcwd()
-        os.makedirs(output_dir, exist_ok=True)
-
-        files = {}
-        for dt, dt_name in types_to_export:
+        for dt, dt_name in types_need_download:
             _log(f"Downloading {dt_name} data...")
             filepath = self.download_file(target_id, dt, output_dir, begin_ts, end_ts)
             if filepath:
@@ -1103,6 +1171,8 @@ def main():
     dl_p.add_argument("--output_dir", help="输出目录（默认当前目录）")
     dl_p.add_argument("--select", type=int, help="多个匹配时的选择序号（从 0 开始）")
     dl_p.add_argument("--clean", action="store_true", help="下载前自动配置清洗条件")
+    dl_p.add_argument("--skip-existing", action="store_true",
+                       help="输出目录已有同问卷同类型文件时跳过下载，直接复用")
 
     args = parser.parse_args()
     if not args.command:
@@ -1174,6 +1244,7 @@ def main():
             output_dir=args.output_dir,
             select_index=args.select,
             clean=args.clean,
+            skip_existing=args.skip_existing,
         )
         _json_output(result)
 

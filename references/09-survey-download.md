@@ -18,6 +18,7 @@ python {SKILL_DIR}/scripts/survey_download.py download --id 问卷ID --output_di
 | `--output_dir` | 输出目录 | 当前工作目录 |
 | `--select` | 多个匹配时的选择序号（从 0 开始） | — |
 | `--clean` | 下载前自动配置清洗条件（流程详见 `clean.md`，务必先 `--dry-run` 预览确认） | 不清洗 |
+| `--skip-existing` | 输出目录已有同问卷同类型文件时跳过下载，直接复用 | 不跳过 |
 
 ## 流程
 
