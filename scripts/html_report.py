@@ -613,6 +613,158 @@ def _check_alerts(overall, nps_data, dimensions):
 
 
 # ========================================================================= #
+#                  通用题目统计
+# ========================================================================= #
+
+# 已知选项标签映射（按题目关键词匹配）
+_KNOWN_LABELS = {
+    '性别':       {1: '男', 2: '女', 3: '其他/不愿透露'},
+    '年龄':       {1: '6岁以下', 2: '7-9岁', 3: '10-12岁', 4: '13-15岁', 5: '16-18岁',
+                   6: '19-22岁', 7: '23-25岁', 8: '26-30岁', 9: '31-35岁', 10: '36-40岁',
+                   11: '18岁以下', 12: '41岁以上'},
+    '职业':       {1: '在读小学生', 2: '在读初中生', 3: '在读高中/中职生',
+                   4: '在读大学/大专生', 5: '在读硕博研究生',
+                   6: 'IT/互联网', 7: '金融', 8: '教育', 9: '医疗', 10: '制造业',
+                   11: '服务业', 12: '政府/事业单位', 13: '自由职业', 14: '待业',
+                   15: '学生(未细分)', 16: '其他'},
+    '频率':       {1: '几乎每天', 2: '每周4-6天', 3: '每周2-3天', 4: '每周1天',
+                   5: '每月2-3次', 6: '每月1次', 7: '几乎不玩'},
+    '时长':       {1: '30分钟以内', 2: '30分钟-1小时', 3: '1-2小时',
+                   4: '2-3小时', 5: '3小时以上'},
+    '交流':       {1: '非常强烈', 2: '比较强烈', 3: '一般', 4: '不太强烈', 5: '非常不强烈'},
+    '意愿':       {1: '非常强烈', 2: '比较强烈', 3: '一般', 4: '不太强烈', 5: '非常不强烈'},
+    '有几个人':   {1: '1人（自己一人）', 2: '2人', 3: '3-5人', 4: '6-10人', 5: '10人以上'},
+    '小团体':     {1: '有，3-5人', 2: '有，6-10人', 3: '有，10人以上',
+                   4: '没有，喜欢随机匹配', 5: '没有，主要自己玩'},
+    '小群组':     {1: '有，3-5人', 2: '有，6-10人', 3: '有，10人以上',
+                   4: '没有，喜欢随机匹配', 5: '没有，主要自己玩'},
+    '付费内购':   {1: '有，且付费过', 2: '有，但没付费过', 3: '没有，不愿意付费'},
+}
+
+
+def _get_labels_for_col(col):
+    """根据列名关键词返回选项标签映射"""
+    for keyword, label_map in _KNOWN_LABELS.items():
+        if keyword in col:
+            return label_map
+    return {}
+
+
+def _calc_general_questions(df, classification, total_n):
+    """
+    计算所有题目的通用统计，用于报告图表展示。
+    返回 {'demographics': {...}, 'single': [...], 'multi': [...], 'matrix': [...]}
+    """
+    result = {'demographics': {}, 'single': [], 'multi': [], 'matrix': []}
+
+    demo_keywords = ['性别', '年龄', '职业']
+    demo_col_set = set()
+
+    # 人口学
+    for col in classification.get('single_choice', []):
+        for kw in demo_keywords:
+            if kw in col:
+                demo_col_set.add(col)
+                label_map = _KNOWN_LABELS.get(kw, {})
+                s = pd.to_numeric(df[col], errors='coerce').dropna()
+                vc = s.value_counts().sort_index()
+                options = []
+                for val, cnt in vc.items():
+                    options.append({
+                        'label': label_map.get(int(val), f'选项{int(val)}'),
+                        'count': int(cnt),
+                        'pct': round(int(cnt) / max(int(len(s)), 1) * 100, 1),
+                    })
+                result['demographics'][kw] = {
+                    'title': kw,
+                    'options': sorted(options, key=lambda x: x['count'], reverse=True),
+                }
+                break
+
+    # 单选题（非人口学、非满意度）
+    for col in classification.get('single_choice', []):
+        if col in demo_col_set:
+            continue
+        if _should_skip_question(col):
+            continue
+        s = pd.to_numeric(df[col], errors='coerce').dropna()
+        if len(s) == 0:
+            continue
+        qid_m = re.match(r'^(Q\d+)', col)
+        qid = qid_m.group(1) if qid_m else ''
+        # 从列名提取题干（去 Qxx. 前缀和 :子项 后缀）
+        raw = col.split(':')[0].strip()
+        title = re.sub(r'^Q\d+\.', '', raw).strip()
+        label_map = _get_labels_for_col(col)
+        vc = s.value_counts().sort_index()
+        options = []
+        for val, cnt in vc.items():
+            options.append({
+                'label': label_map.get(int(val), f'选项{int(val)}'),
+                'count': int(cnt),
+                'pct': round(int(cnt) / max(int(len(s)), 1) * 100, 1),
+            })
+        result['single'].append({
+            'qid': qid, 'title': title,
+            'n': int(len(s)), 'options': options,
+        })
+
+    # 多选题
+    for prefix, sub_cols in classification.get('multi_choice', {}).items():
+        if not sub_cols:
+            continue
+        root_col = sub_cols[0]
+        if _should_skip_question(root_col):
+            continue
+        raw = root_col.split(':')[0].strip() if ':' in root_col else root_col.strip()
+        title = re.sub(r'^Q\d+\.', '', raw).strip()
+        qid_m = re.match(r'^(Q\d+)', prefix)
+        qid = qid_m.group(1) if qid_m else prefix
+        options = []
+        for col in sub_cols:
+            label = _short_label(col)
+            cnt = int(pd.to_numeric(df[col], errors='coerce').fillna(0).astype(bool).sum())
+            options.append({'label': label, 'count': cnt,
+                            'pct': round(cnt / max(total_n, 1) * 100, 1)})
+        options = sorted(options, key=lambda x: x['count'], reverse=True)
+        result['multi'].append({
+            'qid': qid, 'title': title,
+            'n': total_n, 'options': options,
+        })
+
+    # 矩阵量表题
+    for prefix, sub_cols in classification.get('matrix_scale', {}).items():
+        if not sub_cols:
+            continue
+        raw = sub_cols[0].split(':')[0].strip() if ':' in sub_cols[0] else sub_cols[0].strip()
+        title = re.sub(r'^Q\d+\.', '', raw).strip()
+        qid_m = re.match(r'^(Q\d+)', prefix)
+        qid = qid_m.group(1) if qid_m else prefix
+        rows = []
+        for col in sub_cols:
+            label = _short_label(col)
+            s = pd.to_numeric(df[col], errors='coerce').dropna()
+            if len(s) == 0:
+                continue
+            vc = s.value_counts().sort_index()
+            rows.append({
+                'label': label,
+                'mean': round(float(s.mean()), 2),
+                'n': int(len(s)),
+                'dist': {str(int(k)): int(v) for k, v in vc.items()},
+                'top2': round(float((s >= 4).mean()) * 100, 1),
+                'bot2': round(float((s <= 2).mean()) * 100, 1),
+            })
+        if rows:
+            result['matrix'].append({
+                'qid': qid, 'title': title,
+                'rows': sorted(rows, key=lambda x: x['mean'], reverse=True),
+            })
+
+    return result
+
+
+# ========================================================================= #
 #                  HTML 渲染
 # ========================================================================= #
 
@@ -651,6 +803,8 @@ def _render_html(report_data, theme='default'):
         gaming_genres=report_data.get('gaming_genres', []),
         gaming_titles=report_data.get('gaming_titles', []),
         alerts=report_data.get('alerts', []),
+        demographics=report_data.get('demographics', {}),
+        general_questions=report_data.get('general_questions', {}),
         echarts_js=echarts_js,
         report_data_json=report_data_json,
     )
@@ -802,6 +956,11 @@ def generate_report(
     macro_conclusion = _generate_macro_conclusion(overall, nps_data)
     reason_conclusion = _generate_reason_conclusion(reasons)
 
+    # 7.8 通用题目统计（含人口学）
+    print(f"[html_report] Calculating general question stats...", file=sys.stderr)
+    general_questions_data = _calc_general_questions(df, classification, total_n)
+    demographics_data = general_questions_data.pop('demographics', {})
+
     # 8. 组装数据
     report_data = {
         'meta': {
@@ -823,6 +982,8 @@ def generate_report(
         'gaming_genres': gaming_genres,
         'gaming_titles': gaming_titles,
         'alerts': alerts,
+        'demographics': demographics_data,
+        'general_questions': general_questions_data,
     }
 
     # 9. 渲染 HTML
