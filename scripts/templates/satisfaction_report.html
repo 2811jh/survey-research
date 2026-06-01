@@ -5,500 +5,311 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ meta.title }} — 调研报告</title>
 <style>
-/* ═══════════════════════════════════════════════════════════
-   设计系统 · 现代商务风  白底 + 绿色点缀
-   ═══════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════
+   设计系统 · 报告文档风格  白底 + 绿色点缀
+   ════════════════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --green-50:  #f0fdf4;
-  --green-100: #dcfce7;
-  --green-200: #bbf7d0;
-  --green-500: #22c55e;
-  --green-600: #16a34a;
-  --green-700: #15803d;
-  --slate-50:  #f8fafc;
-  --slate-100: #f1f5f9;
-  --slate-200: #e2e8f0;
-  --slate-300: #cbd5e1;
-  --slate-400: #94a3b8;
-  --slate-500: #64748b;
-  --slate-600: #475569;
-  --slate-700: #334155;
-  --slate-800: #1e293b;
-  --slate-900: #0f172a;
-  --amber-400: #fbbf24;
-  --amber-500: #f59e0b;
-  --red-400:   #f87171;
-  --red-500:   #ef4444;
-  --blue-500:  #3b82f6;
-  --purple-500:#8b5cf6;
-  --cyan-500:  #06b6d4;
+  --green-50: #f0fdf4; --green-100: #dcfce7; --green-200: #bbf7d0;
+  --green-500: #22c55e; --green-600: #16a34a; --green-700: #15803d;
+  --slate-50: #f8fafc; --slate-100: #f1f5f9; --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1; --slate-400: #94a3b8; --slate-500: #64748b;
+  --slate-600: #475569; --slate-700: #334155; --slate-800: #1e293b;
+  --amber-100: #fef3c7; --amber-500: #f59e0b; --amber-700: #b45309;
+  --red-100: #fee2e2;   --red-500: #ef4444;   --red-700: #b91c1c;
+  --blue-100: #dbeafe;  --blue-500: #3b82f6;  --blue-700: #1d4ed8;
+  --purple-500: #8b5cf6;
 
-  --bg:          var(--slate-50);
-  --card:        #ffffff;
-  --border:      var(--slate-200);
-  --text:        var(--slate-800);
-  --text-2:      var(--slate-600);
-  --text-3:      var(--slate-400);
-  --accent:      var(--green-600);
-  --accent-light:var(--green-50);
-  --accent-mid:  var(--green-100);
-  --shadow-sm:   0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-md:   0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
-  --radius:      12px;
-  --radius-sm:   8px;
+  --bg: var(--slate-50);
+  --card: #ffffff;
+  --border: var(--slate-200);
+  --text: var(--slate-800);
+  --text-2: var(--slate-600);
+  --text-3: var(--slate-400);
+  --accent: var(--green-600);
+  --accent-bg: var(--green-50);
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --r: 10px; --r-sm: 6px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body {
   font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text);
-  background: var(--bg);
-  min-height: 100vh;
+  font-size: 14px; line-height: 1.7;
+  color: var(--text); background: var(--bg); min-height: 100vh;
 }
 
 /* ── 布局 ── */
 .layout { display: flex; min-height: 100vh; }
-
 .sidebar {
-  width: 220px;
-  flex-shrink: 0;
-  position: fixed;
+  width: 216px; flex-shrink: 0; position: fixed;
   top: 0; left: 0; bottom: 0;
-  background: var(--card);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
+  background: var(--card); border-right: 1px solid var(--border);
+  overflow-y: auto; z-index: 100;
+  display: flex; flex-direction: column;
 }
-.sidebar-logo {
-  padding: 24px 20px 16px;
-  border-bottom: 1px solid var(--border);
+.sidebar-top { padding: 22px 18px 14px; border-bottom: 1px solid var(--border); }
+.sidebar-brand { font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.sidebar-title { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.nav { list-style: none; padding: 10px 8px; flex: 1; }
+.nav-sep { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-3); padding: 14px 12px 4px; }
+.nav li a {
+  display: flex; align-items: center; gap: 7px; padding: 7px 12px;
+  border-radius: var(--r-sm); color: var(--text-2); text-decoration: none;
+  font-size: 13px; font-weight: 500; transition: all .12s;
 }
-.sidebar-logo .brand {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: .5px;
-  text-transform: uppercase;
-}
-.sidebar-logo .survey-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  margin-top: 6px;
-  line-height: 1.4;
-}
-.nav-list {
-  list-style: none;
-  padding: 12px 10px;
-  flex: 1;
-}
-.nav-item a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--text-2);
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all .15s;
-}
-.nav-item a:hover, .nav-item a.active {
-  background: var(--accent-light);
-  color: var(--accent);
-}
-.nav-item a .icon { font-size: 15px; width: 18px; text-align: center; }
-.nav-sep {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  letter-spacing: .8px;
-  text-transform: uppercase;
-  padding: 16px 22px 4px;
-}
+.nav li a:hover, .nav li a.active { background: var(--accent-bg); color: var(--accent); }
+.nav li a .ico { font-size: 14px; width: 16px; text-align: center; opacity: .75; }
 
-.main {
-  margin-left: 220px;
-  flex: 1;
-  max-width: calc(100% - 220px);
-}
+.main { margin-left: 216px; flex: 1; }
 
-/* ── 顶部 Banner ── */
+/* ── Banner ── */
 .banner {
-  background: linear-gradient(135deg, #0f2417 0%, #1a3d28 40%, #145228 100%);
-  color: #fff;
-  padding: 40px 48px 36px;
-  position: relative;
-  overflow: hidden;
+  background: linear-gradient(135deg, #0a1f10 0%, #143020 50%, #0e2419 100%);
+  color: #fff; padding: 36px 48px 32px; position: relative; overflow: hidden;
 }
 .banner::before {
-  content: '';
-  position: absolute;
-  top: -60px; right: -60px;
-  width: 300px; height: 300px;
-  background: radial-gradient(circle, rgba(34,197,94,.18) 0%, transparent 70%);
-  pointer-events: none;
+  content: ''; position: absolute; top: -80px; right: -80px;
+  width: 320px; height: 320px;
+  background: radial-gradient(circle, rgba(34,197,94,.15) 0%, transparent 65%);
 }
-.banner::after {
-  content: '';
-  position: absolute;
-  bottom: -40px; left: 200px;
-  width: 200px; height: 200px;
-  background: radial-gradient(circle, rgba(34,197,94,.10) 0%, transparent 70%);
-  pointer-events: none;
+.banner-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--green-500); margin-bottom: 12px;
 }
-.banner-tag {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--green-500);
-  background: rgba(34,197,94,.12);
-  border: 1px solid rgba(34,197,94,.3);
-  padding: 3px 10px;
-  border-radius: 20px;
-  margin-bottom: 14px;
+.banner h1 { font-size: 24px; font-weight: 700; line-height: 1.35; margin-bottom: 6px; }
+.banner-sub { font-size: 13px; color: rgba(255,255,255,.55); margin-bottom: 18px; }
+.banner-pills { display: flex; gap: 10px; flex-wrap: wrap; }
+.banner-pill {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: rgba(255,255,255,.7);
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+  padding: 4px 12px; border-radius: 20px;
 }
-.banner h1 {
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.3;
-  margin-bottom: 10px;
-}
-.banner-meta {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  margin-top: 16px;
-}
-.banner-meta-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: rgba(255,255,255,.65);
-}
-.banner-meta-item span { color: rgba(255,255,255,.9); font-weight: 500; }
+.banner-pill b { color: rgba(255,255,255,.95); }
 
-/* ── 内容区 ── */
-.content { padding: 32px 40px 60px; }
+/* ── 页面内容 ── */
+.content { padding: 32px 44px 64px; max-width: 1080px; }
 
 /* ── 章节 ── */
-.section { margin-bottom: 40px; }
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
+.section { margin-bottom: 44px; }
+.section-hd {
+  display: flex; align-items: flex-start; gap: 12px;
+  margin-bottom: 20px; padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
 }
-.section-icon {
-  width: 34px; height: 34px;
-  background: var(--accent-light);
-  border-radius: var(--radius-sm);
+.section-num {
+  flex-shrink: 0; width: 32px; height: 32px;
+  background: var(--accent); color: #fff;
+  border-radius: var(--r-sm);
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
+  font-size: 14px; font-weight: 700;
 }
-.section-title {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text);
-}
-.section-subtitle {
-  font-size: 13px;
-  color: var(--text-3);
-  margin-top: 2px;
-}
+.section-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.section-desc { font-size: 13px; color: var(--text-3); }
 
 /* ── 卡片 ── */
 .card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden;
+  margin-bottom: 16px;
 }
-.card-header {
-  padding: 16px 20px 14px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.card-hd {
+  padding: 14px 20px 12px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
 }
-.card-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
+.card-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .card-badge {
-  font-size: 11px;
-  color: var(--text-3);
-  background: var(--slate-100);
-  padding: 2px 8px;
-  border-radius: 20px;
+  font-size: 11px; color: var(--text-3);
+  background: var(--slate-100); padding: 2px 8px;
+  border-radius: 20px; white-space: nowrap;
 }
 .card-body { padding: 20px; }
 
-/* ── KPI 网格 ── */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+/* ── KPI 概览 ── */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.kpi {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 18px 16px; position: relative;
+  box-shadow: var(--shadow);
 }
-.kpi-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
+.kpi::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+  height: 3px; background: var(--accent); border-radius: 0 0 var(--r) var(--r);
 }
-.kpi-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: var(--accent);
-  border-radius: var(--radius) var(--radius) 0 0;
-}
-.kpi-card.blue::before  { background: var(--blue-500); }
-.kpi-card.amber::before { background: var(--amber-500); }
-.kpi-card.red::before   { background: var(--red-500); }
-.kpi-card.purple::before{ background: var(--purple-500); }
-.kpi-label {
-  font-size: 12px;
-  color: var(--text-2);
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-.kpi-value {
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.kpi-value .unit {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-2);
-  margin-left: 3px;
-}
-.kpi-sub {
-  font-size: 12px;
-  color: var(--text-3);
-  margin-top: 6px;
+.kpi.blue::after   { background: var(--blue-500); }
+.kpi.amber::after  { background: var(--amber-500); }
+.kpi.red::after    { background: var(--red-500); }
+.kpi.purple::after { background: var(--purple-500); }
+.kpi-lbl { font-size: 12px; color: var(--text-2); font-weight: 500; margin-bottom: 6px; }
+.kpi-val { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1;
+  font-variant-numeric: tabular-nums; }
+.kpi-val .unit { font-size: 13px; font-weight: 500; color: var(--text-2); margin-left: 2px; }
+.kpi-sub { font-size: 12px; color: var(--text-3); margin-top: 5px; }
+
+/* ── 结论框 ── */
+.insight {
+  background: var(--green-50); border-left: 3px solid var(--accent);
+  padding: 11px 16px; border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: 13px; color: var(--text); line-height: 1.7; margin-bottom: 16px;
 }
 
-/* ── 图表容器 ── */
-.chart-container { position: relative; }
-.chart-row {
-  display: grid;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-.chart-row.cols-2 { grid-template-columns: 1fr 1fr; }
-.chart-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-.chart-row.cols-1 { grid-template-columns: 1fr; }
-
-/* ── 横向进度条 ── */
-.bar-list { display: flex; flex-direction: column; gap: 10px; }
-.bar-item { display: flex; align-items: center; gap: 10px; }
-.bar-label {
-  width: 140px;
-  flex-shrink: 0;
-  font-size: 13px;
-  color: var(--text-2);
-  text-align: right;
+/* ── 标准报告表格 ── */
+.rtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rtable thead th {
+  text-align: left; padding: 9px 14px;
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  background: var(--slate-50); border-bottom: 2px solid var(--border);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.bar-label.wide { width: 200px; }
-.bar-track {
-  flex: 1;
-  height: 22px;
-  background: var(--slate-100);
-  border-radius: 4px;
-  overflow: hidden;
-  position: relative;
+.rtable thead th.r { text-align: right; }
+.rtable thead th.c { text-align: center; }
+.rtable tbody td {
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  vertical-align: middle;
 }
-.bar-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 4px;
-  transition: width .6s cubic-bezier(.4,0,.2,1);
-  min-width: 2px;
+.rtable tbody tr:last-child td { border-bottom: none; }
+.rtable tbody tr:hover td { background: var(--slate-50); }
+.rtable td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.rtable td.center { text-align: center; }
+.rtable .score {
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: 15px;
 }
-.bar-fill.blue   { background: var(--blue-500); }
-.bar-fill.amber  { background: var(--amber-500); }
-.bar-fill.purple { background: var(--purple-500); }
-.bar-pct {
-  width: 46px;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
+.rtable .score.hi  { color: var(--green-600); }
+.rtable .score.mid { color: var(--amber-500); }
+.rtable .score.lo  { color: var(--red-500); }
 
-/* ── 满意度条 ── */
-.sat-bar-item {
-  display: grid;
-  grid-template-columns: 160px 1fr 50px 60px;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
+/* ── 趋势标记 ── */
+.trend {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 12px; font-weight: 600; padding: 2px 7px;
+  border-radius: 4px; white-space: nowrap;
 }
-.sat-bar-item:last-child { border-bottom: none; }
-.sat-score {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-.sat-track {
-  height: 8px;
-  background: var(--slate-100);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.sat-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--green-500), var(--green-600));
-  border-radius: 4px;
-}
-.sat-fill.low  { background: linear-gradient(90deg, var(--amber-400), var(--amber-500)); }
-.sat-fill.vlow { background: linear-gradient(90deg, var(--red-400), var(--red-500)); }
-.sat-top2 { font-size: 12px; color: var(--text-3); text-align: right; }
+.trend.up2  { color: var(--green-700); background: var(--green-100); }
+.trend.up   { color: var(--green-600); background: var(--green-50); }
+.trend.flat { color: var(--slate-500); background: var(--slate-100); }
+.trend.dn   { color: #92400e; background: var(--amber-100); }
+.trend.dn2  { color: var(--red-700); background: var(--red-100); }
 
-/* ── 预警 ── */
-.alert-list { display: flex; flex-direction: column; gap: 8px; }
-.alert-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: var(--radius-sm);
-  border: 1px solid;
+/* ── 满意度级别徽标 ── */
+.level {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 4px;
 }
-.alert-item.red    { background: #fff5f5; border-color: #fecaca; }
-.alert-item.yellow { background: #fffbeb; border-color: #fde68a; }
-.alert-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-top: 3px;
-}
-.alert-item.red    .alert-dot { background: var(--red-500); }
-.alert-item.yellow .alert-dot { background: var(--amber-500); }
-.alert-indicator { font-size: 13px; font-weight: 600; color: var(--text); }
-.alert-current { font-size: 12px; color: var(--text-2); margin-top: 1px; }
-.alert-desc { font-size: 12px; color: var(--text-3); }
+.level.A { background: var(--green-100); color: var(--green-700); }
+.level.B { background: #dbeafe; color: #1e40af; }
+.level.C { background: var(--amber-100); color: var(--amber-700); }
+.level.D { background: var(--red-100); color: var(--red-700); }
 
-/* ── 分段标签 ── */
-.tag-pill {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--slate-100);
-  color: var(--text-2);
+/* ── 数据说明注释 ── */
+.data-note {
+  background: var(--slate-50); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 10px 14px;
+  font-size: 12px; color: var(--text-2); line-height: 1.7;
+  margin-top: 10px;
 }
-.tag-pill.green { background: var(--green-100); color: var(--green-700); }
-.tag-pill.red   { background: #fee2e2; color: var(--red-500); }
-.tag-pill.amber { background: #fef3c7; color: #92400e; }
+.data-note ul { padding-left: 16px; }
+.data-note li { margin-bottom: 2px; }
 
-/* ── 表格 ── */
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.data-table th {
-  text-align: left;
-  padding: 10px 14px;
-  font-weight: 600;
-  color: var(--text-2);
-  border-bottom: 2px solid var(--border);
+/* ── 不满原因卡片 ── */
+.reason-list { display: flex; flex-direction: column; gap: 14px; }
+.reason-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow);
+}
+.reason-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-bottom: 1px solid var(--border);
   background: var(--slate-50);
 }
-.data-table td {
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
+.reason-num {
+  width: 26px; height: 26px; flex-shrink: 0;
+  background: var(--accent); color: #fff; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
 }
-.data-table tr:last-child td { border-bottom: none; }
-.data-table tr:hover td { background: var(--slate-50); }
-.data-table .num { font-variant-numeric: tabular-nums; font-weight: 500; }
-
-/* ── 结论文字 ── */
-.conclusion-box {
-  background: var(--accent-light);
-  border-left: 3px solid var(--accent);
-  padding: 12px 16px;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  font-size: 13px;
-  color: var(--text);
-  margin-top: 16px;
-  line-height: 1.7;
+.reason-text { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
+.reason-pct {
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  background: var(--green-100); padding: 2px 9px; border-radius: 12px;
+}
+.reason-body { padding: 14px 18px; }
+.reason-bar { height: 4px; background: var(--slate-100); border-radius: 2px; margin-bottom: 12px; }
+.reason-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+.quote-list { display: flex; flex-direction: column; gap: 8px; }
+.quote {
+  font-size: 13px; color: var(--text-2); line-height: 1.65;
+  padding: 8px 12px;
+  background: var(--slate-50); border-left: 3px solid var(--slate-300);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-style: italic;
 }
 
-/* ── ECharts 默认高度 ── */
+/* ── 预警 ── */
+.alert-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.alert-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; border-radius: var(--r); border: 1px solid;
+}
+.alert-card.red    { background: #fff5f5; border-color: #fecaca; }
+.alert-card.yellow { background: #fffbeb; border-color: #fde68a; }
+.alert-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.alert-card.red    .alert-dot { background: var(--red-500); }
+.alert-card.yellow .alert-dot { background: var(--amber-500); }
+.alert-ind  { font-size: 13px; font-weight: 600; color: var(--text); }
+.alert-val  { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+.alert-desc { font-size: 12px; color: var(--text-3); }
+
+/* ── 横向进度条（多选题） ── */
+.bar-list { display: flex; flex-direction: column; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 180px 1fr 46px; align-items: center; gap: 10px; }
+.bar-lbl { font-size: 13px; color: var(--text-2); text-align: right; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { height: 20px; background: var(--slate-100); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 4px;
+  transition: width .5s cubic-bezier(.4,0,.2,1); }
+.bar-pct { font-size: 13px; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums; }
+
+/* ── ECharts ── */
 .ec { width: 100%; }
-.ec-sm  { height: 220px; }
-.ec-md  { height: 300px; }
-.ec-lg  { height: 400px; }
-.ec-xl  { height: 480px; }
+.ec-sm { height: 200px; } .ec-md { height: 280px; }
+.ec-lg { height: 380px; } .ec-xl { height: 460px; }
 
-/* ── 无数据 ── */
-.empty {
-  text-align: center;
-  color: var(--text-3);
-  font-size: 13px;
-  padding: 32px;
-}
+/* ── 两栏 ── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 
-/* ── 网格辅助 ── */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+/* ── 空态 ── */
+.empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 28px; }
+
+/* ── 辅助 ── */
+.mb12 { margin-bottom: 12px; } .mb16 { margin-bottom: 16px; } .mb24 { margin-bottom: 24px; }
+.fw6 { font-weight: 600; } .fs12 { font-size: 12px; } .c2 { color: var(--text-2); }
 
 /* ── 响应式 ── */
 @media (max-width: 1024px) {
-  .sidebar { display: none; }
-  .main { margin-left: 0; max-width: 100%; }
-  .content { padding: 24px 20px 40px; }
-  .banner { padding: 28px 20px 24px; }
-  .chart-row.cols-3 { grid-template-columns: 1fr 1fr; }
+  .sidebar { display: none; } .main { margin-left: 0; }
+  .content { padding: 24px 20px 40px; } .banner { padding: 28px 20px 22px; }
 }
 @media (max-width: 720px) {
-  .chart-row.cols-2, .chart-row.cols-3 { grid-template-columns: 1fr; }
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .kpi-grid { grid-template-columns: 1fr 1fr; }
-  .sat-bar-item { grid-template-columns: 120px 1fr 44px; }
-  .sat-top2 { display: none; }
+  .two-col, .three-col { grid-template-columns: 1fr; }
+  .kpi-row { grid-template-columns: 1fr 1fr; }
+  .bar-row { grid-template-columns: 120px 1fr 40px; }
 }
-
-/* ── 滚动条 ── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--slate-300); border-radius: 3px; }
-
-/* ── 打印 ── */
 @media print {
-  .sidebar { display: none; }
-  .main { margin-left: 0; max-width: 100%; }
+  .sidebar { display: none; } .main { margin-left: 0; }
   .card { break-inside: avoid; }
 }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-thumb { background: var(--slate-300); border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -506,41 +317,48 @@ body {
 
 <!-- ═══ 侧边导航 ═══ -->
 <aside class="sidebar">
-  <div class="sidebar-logo">
-    <div class="brand">调研报告</div>
-    <div class="survey-name">{{ meta.title }}</div>
+  <div class="sidebar-top">
+    <div class="sidebar-brand">Survey Report</div>
+    <div class="sidebar-title">{{ meta.title }}</div>
   </div>
-  <ul class="nav-list">
+  <ul class="nav">
     <li class="nav-sep">总览</li>
-    <li class="nav-item"><a href="#overview"><span class="icon">📊</span>数据概况</a></li>
-    {% if alerts %}<li class="nav-item"><a href="#alerts"><span class="icon">⚠️</span>预警</a></li>{% endif %}
+    <li><a href="#overview"><span class="ico">📋</span>数据概况</a></li>
+    {% if alerts %}<li><a href="#alerts"><span class="ico">⚠️</span>预警</a></li>{% endif %}
 
     {% if demographics %}
-    <li class="nav-sep">人口学</li>
-    <li class="nav-item"><a href="#demographics"><span class="icon">👥</span>人口构成</a></li>
-    {% endif %}
-
-    {% if general_questions.multi or general_questions.single %}
-    <li class="nav-sep">行为分析</li>
-    {% for q in general_questions.multi[:4] %}
-    <li class="nav-item"><a href="#q-{{ q.qid }}"><span class="icon">☑️</span>{{ q.qid }}</a></li>
-    {% endfor %}
-    {% for q in general_questions.single[:3] %}
-    <li class="nav-item"><a href="#q-{{ q.qid }}"><span class="icon">🔘</span>{{ q.qid }}</a></li>
-    {% endfor %}
+    <li class="nav-sep">用户画像</li>
+    <li><a href="#demographics"><span class="ico">👥</span>人口构成</a></li>
     {% endif %}
 
     {% if dim_groups %}
     <li class="nav-sep">满意度</li>
     {% for g in dim_groups %}
-    <li class="nav-item"><a href="#dim-{{ loop.index }}"><span class="icon">⭐</span>{{ g.group_title[:8] }}</a></li>
+    <li><a href="#dim-{{ loop.index }}"><span class="ico">⭐</span>{{ g.group_title[:8] }}</a></li>
     {% endfor %}
     {% endif %}
 
-    {% if general_questions.matrix %}
-    <li class="nav-sep">矩阵题</li>
-    {% for q in general_questions.matrix %}
-    <li class="nav-item"><a href="#matrix-{{ q.qid }}"><span class="icon">📋</span>{{ q.qid }}</a></li>
+    {% if reasons %}
+    <li><a href="#reasons"><span class="ico">📌</span>不满原因</a></li>
+    {% endif %}
+
+    {% if general_questions.multi %}
+    <li class="nav-sep">行为分析</li>
+    {% for q in general_questions.multi[:6] %}
+    <li><a href="#q-{{ q.qid }}"><span class="ico">☑️</span>{{ q.qid }}</a></li>
+    {% endfor %}
+    {% endif %}
+
+    {% if general_questions.single %}
+    {% for q in general_questions.single[:4] %}
+    <li><a href="#q-s-{{ loop.index }}"><span class="ico">🔘</span>{{ q.qid }}</a></li>
+    {% endfor %}
+    {% endif %}
+
+    {% if cross_overall %}
+    <li class="nav-sep">交叉分析</li>
+    {% for gname in cross_overall.keys() %}
+    <li><a href="#cross-{{ loop.index }}"><span class="ico">🔀</span>按{{ gname }}</a></li>
     {% endfor %}
     {% endif %}
   </ul>
@@ -549,131 +367,135 @@ body {
 <!-- ═══ 主内容 ═══ -->
 <div class="main">
 
-<!-- ── Banner ── -->
+<!-- Banner -->
 <div class="banner">
-  <div class="banner-tag">Survey Research</div>
+  <div class="banner-eyebrow">📋 Survey Research Report</div>
   <h1>{{ meta.title }}</h1>
-  {% if macro_conclusion %}<p style="color:rgba(255,255,255,.75);font-size:14px;margin-top:8px;">{{ macro_conclusion }}</p>{% endif %}
-  <div class="banner-meta">
-    <div class="banner-meta-item">🗂 问卷编号 <span>#{{ meta.survey_id }}</span></div>
-    {% if meta.date_range %}<div class="banner-meta-item">📅 数据时间 <span>{{ meta.date_range }}</span></div>{% endif %}
-    <div class="banner-meta-item">✅ 有效样本 <span>{{ meta.total_n }} 份</span></div>
-    {% if meta.clean_desc %}<div class="banner-meta-item">🔍 清洗说明 <span>{{ meta.clean_desc }}</span></div>{% endif %}
-    <div class="banner-meta-item">🕐 生成时间 <span>{{ meta.generated_at }}</span></div>
+  {% if macro_conclusion %}<div class="banner-sub">{{ macro_conclusion }}</div>{% endif %}
+  <div class="banner-pills">
+    <div class="banner-pill">🗂 问卷 ID <b>#{{ meta.survey_id }}</b></div>
+    {% if meta.date_range %}<div class="banner-pill">📅 数据时间 <b>{{ meta.date_range }}</b></div>{% endif %}
+    <div class="banner-pill">✅ 有效样本 <b>{{ meta.total_n }} 份</b></div>
+    {% if meta.clean_desc %}<div class="banner-pill">🔍 清洗说明 <b>{{ meta.clean_desc }}</b></div>{% endif %}
+    <div class="banner-pill">🕐 生成于 <b>{{ meta.generated_at }}</b></div>
   </div>
 </div>
 
 <div class="content">
 
-<!-- ══════════════════════════════════════════════
-     § 1  数据概况
-     ══════════════════════════════════════════════ -->
+<!-- ══════════════════════════════
+     § 概况
+     ══════════════════════════════ -->
 <div class="section" id="overview">
-  <div class="section-header">
-    <div class="section-icon">📊</div>
+  <div class="section-hd">
+    <div class="section-num">一</div>
     <div>
       <div class="section-title">数据概况</div>
-      <div class="section-subtitle">样本量、核心指标一览</div>
+      <div class="section-desc">样本基本信息与核心指标</div>
     </div>
   </div>
 
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-label">有效样本量</div>
-      <div class="kpi-value">{{ meta.total_n }}<span class="unit">份</span></div>
+  <!-- KPI -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-lbl">有效样本量</div>
+      <div class="kpi-val">{{ meta.total_n }}<span class="unit">份</span></div>
       <div class="kpi-sub">{{ meta.date_range or '全时间段' }}</div>
     </div>
-
     {% if overall %}
-    <div class="kpi-card blue">
-      <div class="kpi-label">整体满意度</div>
-      <div class="kpi-value">{{ overall.mean }}<span class="unit">/ 5</span></div>
-      <div class="kpi-sub">满意率 {{ overall.top2 }}%</div>
+    <div class="kpi blue">
+      <div class="kpi-lbl">整体满意度</div>
+      <div class="kpi-val">{{ overall.mean }}<span class="unit">/5</span></div>
+      <div class="kpi-sub">满意率 {{ overall.top2 }}%｜不满率 {{ overall.bot2 }}%</div>
     </div>
     {% endif %}
-
     {% if nps %}
-    <div class="kpi-card {% if nps.value >= 30 %}{% elif nps.value >= 0 %}amber{% else %}red{% endif %}">
-      <div class="kpi-label">NPS 净推荐值</div>
-      <div class="kpi-value">{{ nps.value }}<span class="unit">%</span></div>
-      <div class="kpi-sub">推荐者 {{ nps.promoters }}% · 贬损者 {{ nps.detractors }}%</div>
+    <div class="kpi {% if nps.value >= 30 %}{% elif nps.value >= 0 %}amber{% else %}red{% endif %}">
+      <div class="kpi-lbl">NPS 净推荐值</div>
+      <div class="kpi-val">{{ nps.value }}<span class="unit">%</span></div>
+      <div class="kpi-sub">推荐者 {{ nps.promoters }}%｜贬损者 {{ nps.detractors }}%</div>
     </div>
     {% endif %}
-
     {% if dimensions %}
-    <div class="kpi-card purple">
-      <div class="kpi-label">最高满意维度</div>
-      <div class="kpi-value" style="font-size:18px;">{{ dimensions[0].name[:6] }}</div>
+    <div class="kpi">
+      <div class="kpi-lbl">最高满意维度</div>
+      <div class="kpi-val" style="font-size:16px;padding-top:4px;">{{ dimensions[0].name[:6] }}</div>
       <div class="kpi-sub">均值 {{ dimensions[0].mean }} 分</div>
     </div>
-    {% endif %}
-
-    {% if demographics.get('性别') %}
-    {% set gender = demographics['性别'] %}
-    {% if gender.options %}
-    <div class="kpi-card">
-      <div class="kpi-label">主要性别</div>
-      <div class="kpi-value" style="font-size:20px;">{{ gender.options[0].label }}</div>
-      <div class="kpi-sub">占比 {{ gender.options[0].pct }}%</div>
+    {% if dimensions|length > 1 %}
+    <div class="kpi red">
+      <div class="kpi-lbl">最低满意维度</div>
+      <div class="kpi-val" style="font-size:16px;padding-top:4px;">{{ dimensions[-1].name[:6] }}</div>
+      <div class="kpi-sub">均值 {{ dimensions[-1].mean }} 分</div>
     </div>
     {% endif %}
     {% endif %}
-
     {% if alerts %}
-    <div class="kpi-card red">
-      <div class="kpi-label">预警项数</div>
-      <div class="kpi-value">{{ alerts|length }}<span class="unit">项</span></div>
+    <div class="kpi red">
+      <div class="kpi-lbl">预警项</div>
+      <div class="kpi-val">{{ alerts|length }}<span class="unit">项</span></div>
       <div class="kpi-sub">点击左侧「预警」查看详情</div>
     </div>
     {% endif %}
-  </div><!-- /kpi-grid -->
+  </div>
 
-  <!-- 整体满意度分布 -->
+  <!-- 数据说明表 -->
+  <div class="card">
+    <div class="card-hd"><span class="card-title">📋 数据说明</span></div>
+    <div class="card-body" style="padding: 0;">
+      <table class="rtable">
+        <tbody>
+          <tr><td style="width:120px;color:var(--text-2);font-weight:500;">数据来源</td>
+              <td>{{ meta.title }}</td></tr>
+          <tr><td style="color:var(--text-2);font-weight:500;">时间窗口</td>
+              <td>{{ meta.date_range or '—' }}</td></tr>
+          <tr><td style="color:var(--text-2);font-weight:500;">有效样本</td>
+              <td>{{ meta.total_n }} 份</td></tr>
+          <tr><td style="color:var(--text-2);font-weight:500;">数据清洗</td>
+              <td>{{ meta.clean_desc or '无' }}</td></tr>
+          <tr><td style="color:var(--text-2);font-weight:500;">报告生成</td>
+              <td>{{ meta.generated_at }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 满意度分布图 -->
   {% if overall and overall.dist %}
-  <div class="chart-row cols-2">
+  <div class="two-col mb16">
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">整体满意度分布</span>
-        <span class="card-badge">n={{ overall.n }}</span>
-      </div>
-      <div class="card-body">
-        <div id="ec-overall" class="ec ec-md"></div>
-      </div>
+      <div class="card-hd"><span class="card-title">整体满意度分布</span><span class="card-badge">n={{ overall.n }}</span></div>
+      <div class="card-body"><div id="ec-overall" class="ec ec-md"></div></div>
     </div>
     {% if nps and nps.dist %}
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">NPS 分布</span>
-        <span class="card-badge">n={{ nps.n }}</span>
-      </div>
-      <div class="card-body">
-        <div id="ec-nps" class="ec ec-md"></div>
-      </div>
+      <div class="card-hd"><span class="card-title">NPS 推荐意愿分布</span><span class="card-badge">n={{ nps.n }}</span></div>
+      <div class="card-body"><div id="ec-nps" class="ec ec-md"></div></div>
     </div>
     {% endif %}
   </div>
   {% endif %}
 </div>
 
-<!-- ══════════════════════════════════════════════
+<!-- ══════════════════════════════
      § 预警
-     ══════════════════════════════════════════════ -->
+     ══════════════════════════════ -->
 {% if alerts %}
 <div class="section" id="alerts">
-  <div class="section-header">
-    <div class="section-icon">⚠️</div>
+  <div class="section-hd">
+    <div class="section-num" style="background:#ef4444;">!</div>
     <div>
       <div class="section-title">预警检测</div>
-      <div class="section-subtitle">自动识别低于健康线的指标</div>
+      <div class="section-desc">自动识别低于健康线的指标，需重点关注</div>
     </div>
   </div>
-  <div class="alert-list">
+  <div class="alert-row">
     {% for a in alerts %}
-    <div class="alert-item {{ a.level }}">
+    <div class="alert-card {{ a.level }}">
       <div class="alert-dot"></div>
       <div>
-        <div class="alert-indicator">{{ a.indicator }}</div>
-        <div class="alert-current">当前值：{{ a.current }}</div>
+        <div class="alert-ind">{{ a.indicator }}</div>
+        <div class="alert-val">当前值：{{ a.current }}</div>
         <div class="alert-desc">{{ a.desc }}</div>
       </div>
     </div>
@@ -682,70 +504,269 @@ body {
 </div>
 {% endif %}
 
-<!-- ══════════════════════════════════════════════
-     § 人口学
-     ══════════════════════════════════════════════ -->
-{% if demographics %}
-<div class="section" id="demographics">
-  <div class="section-header">
-    <div class="section-icon">👥</div>
+<!-- ══════════════════════════════
+     § 满意度细分
+     ══════════════════════════════ -->
+{% if dim_groups %}
+<div class="section" id="dimensions">
+  <div class="section-hd">
+    <div class="section-num">二</div>
     <div>
-      <div class="section-title">人口构成</div>
-      <div class="section-subtitle">性别 · 年龄 · 职业分布</div>
+      <div class="section-title">满意度细分分析</div>
+      <div class="section-desc">各维度满意度评分（1-5 分制），越高越好</div>
     </div>
   </div>
-  <div class="chart-row cols-3">
-    {% if demographics.get('性别') %}
-    <div class="card">
-      <div class="card-header"><span class="card-title">性别分布</span></div>
-      <div class="card-body">
-        <div id="ec-gender" class="ec ec-md"></div>
+
+  {% for g in dim_groups %}
+  <div class="card" id="dim-{{ loop.index }}">
+    <div class="card-hd">
+      <span class="card-title">{{ g.group_title }}</span>
+      <span class="card-badge">{{ g.dims|length }} 项</span>
+    </div>
+    <div class="card-body">
+      {% if g.conclusion %}
+      <div class="insight">💡 {{ g.conclusion }}</div>
+      {% endif %}
+
+      {% if g.dims %}
+      <div style="overflow-x:auto;">
+        <table class="rtable">
+          <thead>
+            <tr>
+              <th style="min-width:140px;">维度</th>
+              <th class="c">满意度均值</th>
+              <th class="c">满意率</th>
+              <th class="c">不满率</th>
+              <th class="c">样本量</th>
+              <th class="c">评级</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in g.dims %}
+            <tr>
+              <td>{{ d.name }}</td>
+              <td class="center">
+                <span class="score {% if d.mean >= 4.0 %}hi{% elif d.mean >= 3.5 %}mid{% else %}lo{% endif %}">
+                  {{ d.mean }}
+                </span>
+              </td>
+              <td class="center">
+                <span class="trend {% if d.top2 >= 70 %}up2{% elif d.top2 >= 50 %}up{% elif d.top2 >= 40 %}flat{% else %}dn{% endif %}">
+                  {{ d.top2 }}%
+                </span>
+              </td>
+              <td class="center">
+                <span class="trend {% if d.bot2 <= 10 %}up{% elif d.bot2 <= 20 %}flat{% elif d.bot2 <= 30 %}dn{% else %}dn2{% endif %}">
+                  {{ d.bot2 }}%
+                </span>
+              </td>
+              <td class="num">{{ d.n }}</td>
+              <td class="center">
+                <span class="level {% if d.mean >= 4.0 %}A{% elif d.mean >= 3.5 %}B{% elif d.mean >= 3.0 %}C{% else %}D{% endif %}">
+                  {% if d.mean >= 4.0 %}优秀{% elif d.mean >= 3.5 %}良好{% elif d.mean >= 3.0 %}待改善{% else %}需关注{% endif %}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if g.dims | selectattr('mean', 'lt', 3.5) | list %}
+      <div class="data-note" style="margin-top:12px;">
+        <ul>
+          <li>⚠️ 均值低于 3.5 的维度需重点关注，建议结合不满原因深入分析。</li>
+          <li>满意率 = 选择 4-5 分的比例；不满率 = 选择 1-2 分的比例。</li>
+        </ul>
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="empty">暂无数据</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════
+     § 不满原因
+     ══════════════════════════════ -->
+{% if reasons %}
+<div class="section" id="reasons">
+  <div class="section-hd">
+    <div class="section-num">三</div>
+    <div>
+      <div class="section-title">不满原因分析</div>
+      <div class="section-desc">{% if reason_conclusion %}{{ reason_conclusion }}{% else %}玩家最主要的不满意原因（含玩家原声）{% endif %}</div>
+    </div>
+  </div>
+  <div class="reason-list">
+    {% for r in reasons %}
+    <div class="reason-card">
+      <div class="reason-head">
+        <div class="reason-num">{{ loop.index }}</div>
+        <div class="reason-text">📌 {{ r.reason }}</div>
+        <div class="reason-pct">{{ r.pct }}%</div>
+      </div>
+      <div class="reason-body">
+        <div class="reason-bar mb12">
+          <div class="reason-bar-fill" style="width:{{ r.pct }}%"></div>
+        </div>
+        {% if r.quote %}
+        <div class="quote-list">
+          <div class="quote">{{ r.quote }}</div>
+        </div>
+        {% endif %}
       </div>
     </div>
-    {% endif %}
-    {% if demographics.get('年龄') %}
-    <div class="card">
-      <div class="card-header"><span class="card-title">年龄分布</span></div>
-      <div class="card-body">
-        <div id="ec-age" class="ec ec-md"></div>
-      </div>
-    </div>
-    {% endif %}
-    {% if demographics.get('职业') %}
-    <div class="card">
-      <div class="card-header"><span class="card-title">职业分布</span></div>
-      <div class="card-body">
-        <div id="ec-occupation" class="ec ec-md"></div>
-      </div>
-    </div>
-    {% endif %}
+    {% endfor %}
   </div>
 </div>
 {% endif %}
 
-<!-- ══════════════════════════════════════════════
-     § 多选题行为分析
-     ══════════════════════════════════════════════ -->
-{% if general_questions.multi %}
-<div class="section" id="behavior-multi">
-  <div class="section-header">
-    <div class="section-icon">☑️</div>
+<!-- ══════════════════════════════
+     § 人口构成
+     ══════════════════════════════ -->
+{% if demographics %}
+<div class="section" id="demographics">
+  <div class="section-hd">
+    <div class="section-num">{% if dim_groups %}四{% elif reasons %}四{% else %}二{% endif %}</div>
     <div>
-      <div class="section-title">行为偏好（多选）</div>
-      <div class="section-subtitle">玩法参与率、吸引原因等多选题统计</div>
+      <div class="section-title">用户画像 / 样本结构</div>
+      <div class="section-desc">性别、年龄、职业分布</div>
+    </div>
+  </div>
+  <div class="three-col mb16">
+    {% if demographics.get('性别') %}
+    <div class="card">
+      <div class="card-hd"><span class="card-title">性别分布</span></div>
+      <div class="card-body"><div id="ec-gender" class="ec ec-md"></div></div>
+    </div>
+    {% endif %}
+    {% if demographics.get('年龄') %}
+    <div class="card">
+      <div class="card-hd"><span class="card-title">年龄分布</span></div>
+      <div class="card-body"><div id="ec-age" class="ec ec-md"></div></div>
+    </div>
+    {% endif %}
+    {% if demographics.get('职业') %}
+    <div class="card">
+      <div class="card-hd"><span class="card-title">职业分布</span></div>
+      <div class="card-body"><div id="ec-occ" class="ec ec-md"></div></div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 人口学汇总表 -->
+  {% if demographics.get('性别') %}
+  <div class="card">
+    <div class="card-hd"><span class="card-title">性别详情</span></div>
+    <div class="card-body" style="padding:0;">
+      <table class="rtable">
+        <thead><tr><th>性别</th><th class="r">人数</th><th class="r">占比</th></tr></thead>
+        <tbody>
+          {% for o in demographics['性别'].options %}
+          <tr>
+            <td>{{ o.label }}</td>
+            <td class="num">{{ o.count }}</td>
+            <td class="num">{{ o.pct }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════
+     § 交叉分析
+     ══════════════════════════════ -->
+{% if cross_overall %}
+<div class="section" id="cross">
+  <div class="section-hd">
+    <div class="section-num">五</div>
+    <div>
+      <div class="section-title">分人群交叉分析</div>
+      <div class="section-desc">不同人群满意度对比（样本量 &lt; 30 的组不展示）</div>
+    </div>
+  </div>
+  {% for gname, rows in cross_overall.items() %}
+  <div class="card mb16" id="cross-{{ loop.index }}">
+    <div class="card-hd"><span class="card-title">按{{ gname }}分组</span></div>
+    <div class="card-body" style="padding:0;overflow-x:auto;">
+      <table class="rtable">
+        <thead>
+          <tr>
+            <th style="min-width:80px;">{{ gname }}</th>
+            <th class="r">样本量</th>
+            {% if rows and rows[0].sat_mean %}<th class="c">满意度均值</th><th class="c">满意率</th>{% endif %}
+            {% if rows and rows[0].nps is defined %}<th class="c">NPS</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="fw6">{{ row.group }}</td>
+            <td class="num">{{ row.n }}</td>
+            {% if row.sat_mean is defined and row.sat_mean %}
+            <td class="center">
+              <span class="score {% if row.sat_mean >= 4.0 %}hi{% elif row.sat_mean >= 3.5 %}mid{% else %}lo{% endif %}">
+                {{ row.sat_mean }}
+              </span>
+            </td>
+            <td class="center">
+              <span class="trend {% if row.sat_top2 >= 70 %}up2{% elif row.sat_top2 >= 50 %}up{% else %}flat{% endif %}">
+                {{ row.sat_top2 }}%
+              </span>
+            </td>
+            {% endif %}
+            {% if row.nps is defined %}
+            <td class="center">
+              <span class="trend {% if row.nps >= 30 %}up2{% elif row.nps >= 0 %}up{% elif row.nps >= -20 %}dn{% else %}dn2{% endif %}">
+                {{ row.nps }}%
+              </span>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="data-note" style="margin:0 16px 16px;">
+      <ul>
+        <li>样本量 &lt; 30 的分组已自动过滤，数据仅供参考。</li>
+      </ul>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════
+     § 多选题行为分析
+     ══════════════════════════════ -->
+{% if general_questions.multi %}
+<div class="section" id="behavior">
+  <div class="section-hd">
+    <div class="section-num">六</div>
+    <div>
+      <div class="section-title">行为偏好分析</div>
+      <div class="section-desc">多选题——玩法参与率、偏好原因等（按选择率排序）</div>
     </div>
   </div>
   {% for q in general_questions.multi %}
-  <div class="card" id="q-{{ q.qid }}" style="margin-bottom:16px;">
-    <div class="card-header">
-      <span class="card-title">{{ q.qid }}. {{ q.title[:40] }}{% if q.title|length > 40 %}…{% endif %}</span>
-      <span class="card-badge">多选 · n={{ q.n }}</span>
+  <div class="card" id="q-{{ q.qid }}" style="margin-bottom:14px;">
+    <div class="card-hd">
+      <span class="card-title">{{ q.qid }}. {{ q.title[:50] }}{% if q.title|length > 50 %}…{% endif %}</span>
+      <span class="card-badge">多选 n={{ q.n }}</span>
     </div>
     <div class="card-body">
       <div class="bar-list">
         {% for opt in q.options %}
-        <div class="bar-item">
-          <div class="bar-label wide" title="{{ opt.label }}">{{ opt.label[:18] }}{% if opt.label|length > 18 %}…{% endif %}</div>
+        <div class="bar-row">
+          <div class="bar-lbl" title="{{ opt.label }}">{{ opt.label[:18] }}{% if opt.label|length > 18 %}…{% endif %}</div>
           <div class="bar-track">
             <div class="bar-fill" style="width:{{ opt.pct }}%"></div>
           </div>
@@ -759,27 +780,44 @@ body {
 </div>
 {% endif %}
 
-<!-- ══════════════════════════════════════════════
-     § 单选题行为分析
-     ══════════════════════════════════════════════ -->
+<!-- ══════════════════════════════
+     § 单选题分析
+     ══════════════════════════════ -->
 {% if general_questions.single %}
-<div class="section" id="behavior-single">
-  <div class="section-header">
-    <div class="section-icon">🔘</div>
+<div class="section" id="single">
+  <div class="section-hd">
+    <div class="section-num">七</div>
     <div>
-      <div class="section-title">行为指标（单选）</div>
-      <div class="section-subtitle">交流意愿、团队规模、付费行为等</div>
+      <div class="section-title">关键单选题分析</div>
+      <div class="section-desc">交流意愿、团队规模、付费行为等行为指标</div>
     </div>
   </div>
-  <div class="chart-row cols-2">
+  <div class="two-col">
     {% for q in general_questions.single %}
-    <div class="card" id="q-{{ q.qid }}">
-      <div class="card-header">
+    <div class="card" id="q-s-{{ loop.index }}">
+      <div class="card-hd">
         <span class="card-title">{{ q.qid }}. {{ q.title[:30] }}{% if q.title|length > 30 %}…{% endif %}</span>
         <span class="card-badge">n={{ q.n }}</span>
       </div>
       <div class="card-body">
-        <div id="ec-single-{{ loop.index }}" class="ec ec-md"></div>
+        <!-- 表格展示 -->
+        <table class="rtable mb12" style="font-size:13px;">
+          <thead><tr><th>选项</th><th class="r">人数</th><th class="r">占比</th></tr></thead>
+          <tbody>
+            {% for opt in q.options %}
+            <tr>
+              <td>{{ opt.label }}</td>
+              <td class="num">{{ opt.count }}</td>
+              <td class="num">
+                <span style="display:inline-flex;align-items:center;gap:6px;">
+                  <span style="display:inline-block;width:{{ (opt.pct * 0.8)|round(0)|int }}px;height:6px;background:var(--accent);border-radius:3px;min-width:2px;"></span>
+                  {{ opt.pct }}%
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
     {% endfor %}
@@ -787,111 +825,61 @@ body {
 </div>
 {% endif %}
 
-<!-- ══════════════════════════════════════════════
-     § 满意度细分维度
-     ══════════════════════════════════════════════ -->
-{% if dim_groups %}
-<div class="section" id="dimensions">
-  <div class="section-header">
-    <div class="section-icon">⭐</div>
-    <div>
-      <div class="section-title">满意度分析</div>
-      <div class="section-subtitle">各维度满意度评分（1-5 分制）</div>
-    </div>
-  </div>
-  {% for g in dim_groups %}
-  <div class="card" id="dim-{{ loop.index }}" style="margin-bottom:16px;">
-    <div class="card-header">
-      <span class="card-title">{{ g.group_title }}</span>
-      <span class="card-badge">{{ g.display_type }}</span>
-    </div>
-    <div class="card-body">
-      {% if g.dims %}
-      <div style="margin-bottom: 4px;">
-        {% for d in g.dims %}
-        <div class="sat-bar-item">
-          <div style="font-size:13px;color:var(--text-2);" title="{{ d.name }}">
-            {{ d.name[:16] }}{% if d.name|length > 16 %}…{% endif %}
-          </div>
-          <div class="sat-track">
-            <div class="sat-fill {% if d.mean < 3.0 %}vlow{% elif d.mean < 3.5 %}low{% endif %}"
-                 style="width:{{ (d.mean / 5 * 100)|round(0)|int }}%"></div>
-          </div>
-          <div class="sat-score">{{ d.mean }}</div>
-          <div class="sat-top2">满意 {{ d.top2 }}%</div>
-        </div>
-        {% endfor %}
-      </div>
-      {% if g.conclusion %}
-      <div class="conclusion-box">💡 {{ g.conclusion }}</div>
-      {% endif %}
-      {% else %}
-      <div class="empty">暂无维度数据</div>
-      {% endif %}
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-<!-- ══════════════════════════════════════════════
-     § 矩阵量表题
-     ══════════════════════════════════════════════ -->
+<!-- ══════════════════════════════
+     § 矩阵评分题
+     ══════════════════════════════ -->
 {% if general_questions.matrix %}
 <div class="section" id="matrix">
-  <div class="section-header">
-    <div class="section-icon">📋</div>
+  <div class="section-hd">
+    <div class="section-num">八</div>
     <div>
       <div class="section-title">矩阵评分题</div>
-      <div class="section-subtitle">多行评分题均值与分布</div>
+      <div class="section-desc">多行量表题的均值与满意率详情</div>
     </div>
   </div>
   {% for q in general_questions.matrix %}
-  <div class="card" id="matrix-{{ q.qid }}" style="margin-bottom:16px;">
-    <div class="card-header">
-      <span class="card-title">{{ q.qid }}. {{ q.title[:40] }}{% if q.title|length > 40 %}…{% endif %}</span>
-      <span class="card-badge">矩阵 · {{ q.rows|length }} 行</span>
+  <div class="card" id="matrix-{{ q.qid }}" style="margin-bottom:14px;">
+    <div class="card-hd">
+      <span class="card-title">{{ q.qid }}. {{ q.title[:50] }}{% if q.title|length > 50 %}…{% endif %}</span>
+      <span class="card-badge">矩阵 {{ q.rows|length }} 行</span>
     </div>
-    <div class="card-body">
-      <div id="ec-matrix-{{ loop.index }}" class="ec ec-lg"></div>
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-<!-- ══════════════════════════════════════════════
-     § 交叉分析（如有）
-     ══════════════════════════════════════════════ -->
-{% if cross_overall %}
-<div class="section" id="cross">
-  <div class="section-header">
-    <div class="section-icon">🔀</div>
-    <div>
-      <div class="section-title">交叉分析</div>
-      <div class="section-subtitle">不同人群满意度对比</div>
-    </div>
-  </div>
-  {% for group_name, rows in cross_overall.items() %}
-  <div class="card" style="margin-bottom:16px;">
-    <div class="card-header"><span class="card-title">按{{ group_name }}分组</span></div>
-    <div class="card-body" style="overflow-x:auto;">
-      <table class="data-table">
+    <div class="card-body" style="padding:0;overflow-x:auto;">
+      <table class="rtable">
         <thead>
           <tr>
-            <th>{{ group_name }}</th>
-            <th>样本量</th>
-            {% if rows and rows[0].sat_mean %}<th>满意度均值</th><th>满意率</th>{% endif %}
-            {% if rows and rows[0].nps is defined %}<th>NPS</th>{% endif %}
+            <th style="min-width:120px;">项目</th>
+            <th class="c">均值</th>
+            <th class="c">满意率</th>
+            <th class="c">不满率</th>
+            <th class="c">样本量</th>
+            <th class="c">评级</th>
           </tr>
         </thead>
         <tbody>
-          {% for row in rows %}
+          {% for r in q.rows %}
           <tr>
-            <td>{{ row.group }}</td>
-            <td class="num">{{ row.n }}</td>
-            {% if row.sat_mean %}<td class="num">{{ row.sat_mean }}</td><td class="num">{{ row.sat_top2 }}%</td>{% endif %}
-            {% if row.nps is defined %}<td class="num">{{ row.nps }}%</td>{% endif %}
+            <td>{{ r.label }}</td>
+            <td class="center">
+              <span class="score {% if r.mean >= 4.0 %}hi{% elif r.mean >= 3.5 %}mid{% else %}lo{% endif %}">
+                {{ r.mean }}
+              </span>
+            </td>
+            <td class="center">
+              <span class="trend {% if r.top2 >= 70 %}up2{% elif r.top2 >= 50 %}up{% elif r.top2 >= 40 %}flat{% else %}dn{% endif %}">
+                {{ r.top2 }}%
+              </span>
+            </td>
+            <td class="center">
+              <span class="trend {% if r.bot2 <= 10 %}up{% elif r.bot2 <= 20 %}flat{% elif r.bot2 <= 30 %}dn{% else %}dn2{% endif %}">
+                {{ r.bot2 }}%
+              </span>
+            </td>
+            <td class="num">{{ r.n }}</td>
+            <td class="center">
+              <span class="level {% if r.mean >= 4.0 %}A{% elif r.mean >= 3.5 %}B{% elif r.mean >= 3.0 %}C{% else %}D{% endif %}">
+                {% if r.mean >= 4.0 %}优秀{% elif r.mean >= 3.5 %}良好{% elif r.mean >= 3.0 %}待改善{% else %}需关注{% endif %}
+              </span>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -906,92 +894,76 @@ body {
 </div><!-- /main -->
 </div><!-- /layout -->
 
-<!-- ═══════════════════════════════════════════
-     ECharts + 数据初始化
-     ═══════════════════════════════════════════ -->
+<!-- ═══ ECharts + JS ═══ -->
 <script>{{ echarts_js }}</script>
 <script>
 (function(){
   'use strict';
-
   const DATA = {{ report_data_json }};
-  const GREEN = ['#22c55e','#16a34a','#4ade80','#86efac','#bbf7d0','#dcfce7'];
-  const PALETTE = ['#22c55e','#3b82f6','#f59e0b','#8b5cf6','#06b6d4','#f97316','#ec4899','#84cc16','#14b8a6'];
+  const GREEN  = '#22c55e';
+  const PAL    = ['#22c55e','#3b82f6','#f59e0b','#8b5cf6','#06b6d4','#f97316','#ec4899','#84cc16'];
 
-  const BASE_OPTS = {
+  const BASE = {
     backgroundColor: 'transparent',
-    textStyle: { fontFamily: "'Noto Sans SC', sans-serif", fontSize: 12, color: '#475569' },
+    textStyle: { fontFamily: "'Noto Sans SC',sans-serif", fontSize: 12, color: '#475569' },
     tooltip: { backgroundColor: '#fff', borderColor: '#e2e8f0', borderWidth: 1,
-                textStyle: { color: '#1e293b', fontSize: 12 }, extraCssText: 'box-shadow:0 4px 12px rgba(0,0,0,.08)' },
-    grid: { containLabel: true, left: 12, right: 20, top: 12, bottom: 12 },
+               textStyle: { color: '#1e293b', fontSize: 12 },
+               extraCssText: 'box-shadow:0 4px 12px rgba(0,0,0,.08)' },
   };
 
-  function ec(id) {
+  function $ec(id) {
     const el = document.getElementById(id);
-    if (!el) return null;
-    return echarts.init(el, null, { renderer: 'canvas' });
+    return el ? echarts.init(el, null, { renderer: 'canvas' }) : null;
   }
 
   function pieOpt(data, legend) {
     return {
-      ...BASE_OPTS,
-      legend: { show: !!legend, orient: 'vertical', right: 0, top: 'middle',
-                itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 12 } },
+      ...BASE,
+      legend: legend ? { orient: 'vertical', right: 0, top: 'middle',
+                         itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } } : { show: false },
       series: [{
         type: 'pie',
-        radius: legend ? ['42%', '65%'] : ['38%', '60%'],
-        center: legend ? ['40%', '50%'] : ['50%', '50%'],
+        radius: legend ? ['40%', '62%'] : ['35%', '58%'],
+        center: legend ? ['38%', '50%'] : ['50%', '50%'],
+        color: PAL,
         data: data,
-        label: { show: true, formatter: '{b}\n{d}%', fontSize: 11, lineHeight: 16 },
-        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,.12)' } },
-        color: PALETTE,
+        label: { formatter: '{b}\n{d}%', fontSize: 11, lineHeight: 15 },
+        emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,.1)' } },
       }],
     };
   }
 
-  function barHOpt(labels, values, color, maxVal) {
-    const max = maxVal || Math.max(...values) * 1.15;
-    return {
-      ...BASE_OPTS,
-      xAxis: { type: 'value', max: max, axisLabel: { formatter: '{value}%', fontSize: 11 },
-               splitLine: { lineStyle: { color: '#f1f5f9' } } },
-      yAxis: { type: 'category', data: labels, inverse: true,
-               axisLabel: { fontSize: 12, width: 140, overflow: 'truncate' },
-               axisTick: { show: false }, axisLine: { show: false } },
-      series: [{
-        type: 'bar', data: values, barMaxWidth: 22,
-        itemStyle: { color: color || '#22c55e', borderRadius: [0, 4, 4, 0] },
-        label: { show: true, position: 'right', formatter: '{c}%', fontSize: 11, color: '#64748b' },
-      }],
-    };
-  }
-
-  // ── 整体满意度饼 ──
+  // ── 整体满意度 ──
   if (DATA.overall && DATA.overall.dist) {
-    const chart = ec('ec-overall');
-    if (chart) {
-      const d = DATA.overall.dist;
-      const labels = ['1分', '2分', '3分', '4分', '5分'];
-      const pieData = Object.entries(d).map(([k, v]) => ({ name: labels[+k-1] || k+'分', value: v }));
-      chart.setOption(pieOpt(pieData, false));
+    const c = $ec('ec-overall');
+    if (c) {
+      const labels = {'1':'1分','2':'2分','3':'3分','4':'4分','5':'5分'};
+      c.setOption(pieOpt(
+        Object.entries(DATA.overall.dist).map(([k,v]) => ({ name: labels[k]||k, value: v }))
+      ));
     }
   }
 
-  // ── NPS 分布条 ──
+  // ── NPS ──
   if (DATA.nps && DATA.nps.dist) {
-    const chart = ec('ec-nps');
-    if (chart) {
+    const c = $ec('ec-nps');
+    if (c) {
       const nps = DATA.nps;
-      chart.setOption({
-        ...BASE_OPTS,
+      c.setOption({
+        ...BASE,
+        grid: { containLabel: true, left: 10, right: 14, top: 14, bottom: 10 },
         xAxis: { type: 'category', data: Object.keys(nps.dist).map(k => k+'分'),
                  axisLabel: { fontSize: 11 }, axisTick: { show: false } },
-        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } },
+                 axisLabel: { fontSize: 10 } },
         series: [{
-          type: 'bar', barMaxWidth: 28,
-          data: Object.entries(nps.dist).map(([k, v]) => ({
+          type: 'bar', barMaxWidth: 24,
+          data: Object.entries(nps.dist).map(([k,v]) => ({
             value: v,
-            itemStyle: { color: +k >= 9 ? '#22c55e' : +k >= 7 ? '#94a3b8' : '#f87171', borderRadius: [4,4,0,0] }
+            itemStyle: {
+              color: +k >= 9 ? '#22c55e' : +k >= 7 ? '#94a3b8' : '#f87171',
+              borderRadius: [3,3,0,0],
+            },
           })),
           label: { show: true, position: 'top', fontSize: 10, color: '#64748b' },
         }],
@@ -1003,76 +975,32 @@ body {
   if (DATA.demographics) {
     const d = DATA.demographics;
     if (d['性别']) {
-      const c = ec('ec-gender');
+      const c = $ec('ec-gender');
       if (c) c.setOption(pieOpt(d['性别'].options.map(o => ({ name: o.label, value: o.count }))));
     }
     if (d['年龄']) {
-      const c = ec('ec-age');
-      if (c) c.setOption(pieOpt(d['年龄'].options.map(o => ({ name: o.label, value: o.count }))));
+      const c = $ec('ec-age');
+      if (c) c.setOption(pieOpt(d['年龄'].options.map(o => ({ name: o.label, value: o.count })), true));
     }
     if (d['职业']) {
-      const c = ec('ec-occupation');
+      const c = $ec('ec-occ');
       if (c) {
         const opts = d['职业'].options.slice(0, 8);
-        c.setOption(barHOpt(opts.map(o => o.label), opts.map(o => o.pct), '#22c55e', 100));
+        c.setOption({
+          ...BASE,
+          grid: { containLabel: true, left: 12, right: 40, top: 10, bottom: 10 },
+          xAxis: { type: 'value', axisLabel: { formatter: '{value}%', fontSize: 10 },
+                   splitLine: { lineStyle: { color: '#f1f5f9' } } },
+          yAxis: { type: 'category', data: opts.map(o => o.label).reverse(),
+                   axisLabel: { fontSize: 11 }, axisTick: { show: false }, axisLine: { show: false } },
+          series: [{
+            type: 'bar', data: opts.map(o => o.pct).reverse(),
+            barMaxWidth: 20, itemStyle: { color: GREEN, borderRadius: [0,4,4,0] },
+            label: { show: true, position: 'right', formatter: '{c}%', fontSize: 10, color: '#64748b' },
+          }],
+        });
       }
     }
-  }
-
-  // ── 单选题 ──
-  if (DATA.general_questions && DATA.general_questions.single) {
-    DATA.general_questions.single.forEach((q, i) => {
-      const c = ec(`ec-single-${i+1}`);
-      if (!c) return;
-      const maxScale = q.options.reduce((m, o) => Math.max(m, o.pct), 0) * 1.2;
-      c.setOption(barHOpt(
-        q.options.map(o => o.label),
-        q.options.map(o => o.pct),
-        PALETTE[i % PALETTE.length],
-        maxScale,
-      ));
-    });
-  }
-
-  // ── 矩阵量表题 ──
-  if (DATA.general_questions && DATA.general_questions.matrix) {
-    DATA.general_questions.matrix.forEach((q, i) => {
-      const c = ec(`ec-matrix-${i+1}`);
-      if (!c || !q.rows.length) return;
-      const rows = q.rows.slice(0, 15);  // 最多15行
-      const labels = rows.map(r => r.label.length > 12 ? r.label.slice(0, 12) + '…' : r.label);
-      const means  = rows.map(r => r.mean);
-      const top2s  = rows.map(r => r.top2);
-
-      c.setOption({
-        ...BASE_OPTS,
-        legend: { data: ['均值', '满意率%'], right: 0, top: 0,
-                  itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 12 } },
-        xAxis: [
-          { type: 'value', min: 0, max: 5, name: '均值',
-            nameTextStyle: { fontSize: 11 }, splitLine: { lineStyle: { color: '#f1f5f9' } },
-            axisLabel: { fontSize: 11 } },
-          { type: 'value', min: 0, max: 100, name: '满意率%',
-            nameTextStyle: { fontSize: 11 }, axisLabel: { formatter: '{value}%', fontSize: 11 },
-            splitLine: { show: false } },
-        ],
-        yAxis: { type: 'category', data: labels, inverse: true,
-                 axisLabel: { fontSize: 12 }, axisTick: { show: false }, axisLine: { show: false } },
-        series: [
-          {
-            name: '均值', type: 'bar', xAxisIndex: 0, data: means, barWidth: 12,
-            itemStyle: { color: '#22c55e', borderRadius: [0, 4, 4, 0] },
-            label: { show: true, position: 'right', formatter: '{c}', fontSize: 11, color: '#64748b' },
-          },
-          {
-            name: '满意率%', type: 'scatter', xAxisIndex: 1, yAxisIndex: 0,
-            data: top2s.map((v, idx) => [v, labels[idx]]),
-            symbolSize: 10,
-            itemStyle: { color: '#3b82f6' },
-          },
-        ],
-      });
-    });
   }
 
   // ── 窗口缩放 ──
@@ -1083,18 +1011,18 @@ body {
     });
   });
 
-  // ── 导航激活 ──
-  const navLinks = document.querySelectorAll('.nav-item a');
-  const observer = new IntersectionObserver(entries => {
+  // ── 侧边导航激活 ──
+  const navAs = document.querySelectorAll('.nav li a');
+  const io = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting) {
-        navLinks.forEach(a => a.classList.remove('active'));
-        const link = document.querySelector(`.nav-item a[href="#${e.target.id}"]`);
-        if (link) link.classList.add('active');
+        navAs.forEach(a => a.classList.remove('active'));
+        const a = document.querySelector(`.nav li a[href="#${e.target.id}"]`);
+        if (a) a.classList.add('active');
       }
     });
-  }, { threshold: 0.3 });
-  document.querySelectorAll('.section[id]').forEach(s => observer.observe(s));
+  }, { threshold: 0.2 });
+  document.querySelectorAll('.section[id]').forEach(s => io.observe(s));
 
 })();
 </script>
