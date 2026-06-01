@@ -61,7 +61,7 @@ python {SKILL_DIR}/scripts/survey_download.py download --id 确定的ID --output
   "files": {
     "text_data": "C:\\path\\to\\survey_90450_我的世界山头服调研【文本数据】20260101-20260410.xlsx",
     "quantified_data": "C:\\path\\to\\survey_90450_我的世界山头服调研【量化数据】20260101-20260410.csv",
-    "stat_data": "C:\\path\\to\\survey_90450_我的世界山头服调研_基础统计.xlsx"
+    "stat_data": "C:\\path\\to\\survey_90450_我的世界山头服调研_基础统计_20260101-20260410.xlsx"
   }
 }
 ```

@@ -64,7 +64,7 @@ pip install pandas numpy openpyxl requests jinja2
 C:\Users\xxx\Desktop\MC调研_90502\
 ├── survey_90502_MC调研【量化数据】20260101-20260410.csv   ← 下载的原始数据
 ├── survey_90502_MC调研【文本数据】20260101-20260410.xlsx  ← 下载的文本数据（如有）
-├── survey_90502_MC调研_基础统计.xlsx                      ← 系统统计报表（默认下载）
+├── survey_90502_MC调研_基础统计_20260101-20260410.xlsx                      ← 系统统计报表（默认下载）
 ├── survey_90502_MC调研_交叉分析.xlsx                      ← 交叉分析结果（如有）
 └── MC_满意度报告_90502.html                               ← HTML 满意度报告
 ```

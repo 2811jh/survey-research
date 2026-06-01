@@ -1043,7 +1043,13 @@ class SurveyDownloader:
 
         safe = _safe_name(survey_name)
         name_part = f"_{safe}" if safe else ""
-        filename = f"survey_{survey_id}{name_part}_基础统计.xlsx"
+        if begin_ts and end_ts:
+            begin_str = datetime.fromtimestamp(begin_ts / 1000).strftime("%Y%m%d")
+            end_str = datetime.fromtimestamp(end_ts / 1000).strftime("%Y%m%d")
+            date_range = f"_{begin_str}-{end_str}"
+        else:
+            date_range = ""
+        filename = f"survey_{survey_id}{name_part}_基础统计{date_range}.xlsx"
         filepath = os.path.join(output_dir, filename)
 
         with open(filepath, "wb") as f:
