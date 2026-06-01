@@ -69,10 +69,10 @@ cd ~/.claude/skills/survey-research && git pull
 ## � 环境要求
 
 - **Python 3.8+**（用于执行分析脚本）
-- **Python 依赖**：`pandas`、`numpy`、`openpyxl`（Word 报告额外需要 `python-docx`）
+- **Python 依赖**：`pandas`、`numpy`、`openpyxl`、`requests`、`jinja2`（Word 报告额外需要 `python-docx`）
 
 ```bash
-pip install pandas numpy openpyxl python-docx
+pip install pandas numpy openpyxl requests jinja2 python-docx
 ```
 
 ---
@@ -187,13 +187,15 @@ survey-research/
 │   ├── crosstab.py            # 交叉分析
 │   ├── text_extract.py        # 文本提取与抽样
 │   ├── text_export.py         # 文本分析 Excel 导出
-│   ├── html_report.py         # HTML 满意度报告一键生成（默认报告格式）
+│   ├── html_report.py         # HTML 问卷结果报告一键生成（每题柱状图+结论，默认报告格式）
 │   ├── report_export.py       # 报告格式转换（md→docx/xlsx/txt）
 │   ├── survey_download.py     # 问卷数据下载（支持国内/国外平台）
 │   ├── refresh_cookie.py      # Cookie 自动刷新
 │   ├── _styles.py             # Excel 样式工具
 │   ├── config.json            # 平台配置（自动生成，含 cookie，已 gitignore）
-│   └── requirements.txt       # Python 依赖
+│   ├── requirements.txt       # Python 依赖
+│   └── templates/
+│       └── satisfaction_report.html  # HTML 报告 Jinja2 模板
 └── references/           # 方法论参考文档
     ├── 00-index.md            # 索引与导航
     ├── 01-thematic-analysis.md    # 主题分析六步法
@@ -207,7 +209,10 @@ survey-research/
     ├── 09-survey-download.md      # 问卷下载操作指南
     ├── 10-survey-clean.md         # 问卷数据清洗规则
     ├── 11-survey-cookie.md        # Cookie 处理与自动刷新
-```
+    ├── 12-crosstab-workflow.md    # 交叉分析完整执行步骤
+    ├── 13-text-analysis-workflow.md  # 文本分析完整执行步骤
+    ├── 15-satisfaction-report.md  # 报告生成框架与指标计算
+    └── 16-compare-workflow.md     # 多期对比分析流程
 
 ---
 
@@ -215,9 +220,10 @@ survey-research/
 
 | 文件 | 内容 |
 |------|------|
+| `{问卷名}_调研报告.html` | HTML 问卷结果报告（每题柱状图+自动结论+分群对比，单文件离线可用） |
 | `{文件名}_分析报告.md` | Markdown 综合报告（含关键发现、策略建议） |
 | `{文件名}_分析报告.docx` | Word 版报告（按需生成） |
-| `{文件名}_基础统计.xlsx` | 各题频率分布详细数据 |
+| `{文件名}_基础统计.xlsx` | 各题频率分布详细数据（由问卷系统统计报表或本地脚本生成） |
 | `{文件名}_交叉分析.xlsx` | 分组差异对比数据 |
 | `{文件名}_文本分析.xlsx` | 文本维度总结 + 逐条标注明细 |
 
