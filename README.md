@@ -190,6 +190,7 @@ survey-research/
 │   ├── html_report.py         # HTML 问卷结果报告一键生成（每题柱状图+结论，默认报告格式）
 │   ├── report_export.py       # 报告格式转换（md→docx/xlsx/txt）
 │   ├── survey_download.py     # 问卷数据下载（支持国内/国外平台）
+│   ├── enrich_columns.py      # 字段扩充：在日期列右侧插入"周"/"月"派生列
 │   ├── refresh_cookie.py      # Cookie 自动刷新
 │   ├── _styles.py             # Excel 样式工具
 │   ├── config.json            # 平台配置（自动生成，含 cookie，已 gitignore）
