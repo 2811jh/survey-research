@@ -86,10 +86,18 @@ python {SKILL_DIR}/scripts/text_extract.py \
 
 ```bash
 python {SKILL_DIR}/scripts/text_export.py \
-  --output_path "{文件目录}/{文件名}_文本分析.xlsx" \
+  --output_path "{文件目录}/{简短题意文件名}.xlsx" \
   --results_file "临时JSON文件路径" \
   --file_path "原始数据文件路径"
 ```
+
+文件命名默认使用「题号_简短题意.xlsx」，避免统一命名为“文本分析”。例如：
+- `Q5_MC满意原因.xlsx`
+- `Q8_外挂表现.xlsx`
+- `Q20_版本建议.xlsx`
+- `Q98_不推荐原因.xlsx`
+
+如果未传 `--output_path`，`text_export.py` 会根据 results JSON 的 `question` 自动生成上述风格的默认文件名，保存在当前工作目录。
 
 results JSON 格式：
 ```json
