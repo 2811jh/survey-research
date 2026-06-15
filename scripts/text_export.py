@@ -53,6 +53,78 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
 
+def _clean_filename_part(text: str, max_len: int = 24) -> str:
+    """生成安全的文件名片段。"""
+    cleaned = re.sub(r'[\\/:*?"<>|]', '', text)
+    cleaned = re.sub(r'\s+', '', cleaned)
+    return cleaned[:max_len].strip() or "文本分析"
+
+
+def _summarize_question_for_filename(question: str) -> str:
+    """根据题目生成简短文件名语义。"""
+    q_match = re.match(r'^(Q\d+)', question.strip())
+    qid = q_match.group(1) if q_match else "文本题"
+
+    activity_match = re.search(r'[“"]([^”"]+)[”"]', question)
+    activity = activity_match.group(1) if activity_match else ""
+    if activity:
+        activity = activity.replace("活动", "").replace("节", "")
+
+    if "MC移动版" in question and "比较满意" in question:
+        topic = "MC满意原因"
+    elif "外挂" in question:
+        topic = "外挂表现"
+    elif "模组" in question and "搜不到" in question:
+        topic = "想玩缺失模组"
+    elif "BUG" in question.upper():
+        topic = "近期BUG"
+    elif "丢失" in question and "存档" in question:
+        topic = "存档丢失场景"
+    elif "美术" in question or "画面" in question:
+        topic = "美术不满原因"
+    elif "当前版本" in question and "建议" in question:
+        topic = "版本建议"
+    elif "性能问题" in question and "哪些模组" in question:
+        topic = "性能问题模组"
+    elif "性能问题" in question:
+        topic = "性能问题场景"
+    elif "不太愿意" in question and "推荐" in question:
+        topic = "不推荐原因"
+    elif "更愿意" in question and "推荐" in question:
+        topic = "推荐改进建议"
+    elif "推荐给他人" in question and "打动" in question:
+        topic = "推荐打动原因"
+    elif "模组售后" in question or "问题反馈" in question:
+        topic = "模组售后诉求"
+    elif activity:
+        if "比较满意" in question or "较为满意" in question:
+            topic = f"{activity}满意原因"
+        elif "不太满意" in question or "不满" in question or "一般" in question:
+            topic = f"{activity}不满原因"
+        elif "建议" in question or "期待" in question or "意见" in question:
+            topic = f"{activity}建议"
+        else:
+            topic = activity
+    elif "建议" in question or "期待" in question or "意见" in question:
+        topic = "建议"
+    elif "满意" in question:
+        topic = "满意原因"
+    elif "不满" in question or "一般" in question:
+        topic = "不满原因"
+    else:
+        topic = "文本分析"
+
+    return f"{qid}_{_clean_filename_part(topic)}.xlsx"
+
+
+def default_output_filename(results: list) -> str:
+    """根据文本分析结果生成默认 Excel 文件名。"""
+    if not results:
+        return "文本分析.xlsx"
+    question = str(results[0].get("question", "文本分析"))
+    return _summarize_question_for_filename(question)
+
+
 # ========================================================================= #
 #                        Excel 导出核心
 # ========================================================================= #
@@ -496,7 +568,8 @@ def export_text_report(results: list, output_path: str,
 
 def main():
     parser = argparse.ArgumentParser(description="问卷文本分析结果导出")
-    parser.add_argument("--output_path", required=True, help="输出 Excel 文件路径")
+    parser.add_argument("--output_path", default=None,
+                        help="输出 Excel 文件路径；不传时根据题目自动生成如 Q5_MC满意原因.xlsx")
     parser.add_argument("--results_file", default=None, help="分析结果 JSON 文件路径")
     parser.add_argument("--results_json", default=None, help="分析结果 JSON 字符串")
     parser.add_argument("--file_path", default=None,
@@ -536,7 +609,8 @@ def main():
         results = [results]
 
     try:
-        result = export_text_report(results, args.output_path,
+        output_path = args.output_path or default_output_filename(results)
+        result = export_text_report(results, output_path,
                                     file_path=args.file_path,
                                     sheet_name=sheet_name,
                                     sample_n=args.sample_n)

@@ -32,6 +32,7 @@ description: |
 {SKILL_DIR}/scripts/report_export.py
 {SKILL_DIR}/scripts/survey_download.py
 {SKILL_DIR}/scripts/refresh_cookie.py
+{SKILL_DIR}/scripts/enrich_columns.py
 ```
 
 其中 `{SKILL_DIR}` 是本 skill 所在目录的绝对路径。
@@ -334,6 +335,33 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 - **阶段 5 报告撰写**：参考 `03`、`06` 进行多数据源融合表达；参考 `08` 对建议进行量化支撑
 - **解读定量数据时**：参考 `05` 规避常见统计错误
 - **发现明显用户分群时**：参考 `07` 描述用户群体特征
+
+---
+
+## 字段扩充（enrich_columns.py）
+
+**触发条件**：用户要求在日期列旁边添加"周"或"月"派生字段（如「在结束时间旁边加一列显示第几周」「按月分组」）。
+
+```bash
+python {SKILL_DIR}/scripts/enrich_columns.py \
+    --file_path "量化数据.csv" \
+    --date_cols "结束答题时间" \
+    --add-week --add-month \
+    [--output "输出路径.csv"]
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--file_path` | 输入文件（CSV / Excel） | 必填 |
+| `--date_cols` | 要处理的日期列名，可多个 | `结束答题时间` |
+| `--add-week` | 插入"周"列：`第X周（M.D-M.D）`（ISO周，周一起始） | — |
+| `--add-month` | 插入"月"列：`26年X月` | — |
+| `--output` | 输出路径 | 原文件名 + `_带周月` |
+
+**规则**：
+- 两个参数都不传时，默认同时插入周和月
+- 新列插入在对应日期列的**右侧**，列名为 `{日期列名}_周` / `{日期列名}_月`
+- 成功后 stdout 输出 JSON，包含 `output_path`、`rows`、`columns_added`、`week_distribution`
 
 ---
 
