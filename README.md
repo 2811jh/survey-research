@@ -213,7 +213,8 @@ survey-research/
     ├── 12-crosstab-workflow.md    # 交叉分析完整执行步骤
     ├── 13-text-analysis-workflow.md  # 文本分析完整执行步骤
     ├── 15-satisfaction-report.md  # 报告生成框架与指标计算
-    └── 16-compare-workflow.md     # 多期对比分析流程
+    ├── 16-compare-workflow.md     # 多期对比分析流程
+    └── 17-md-report-workflow.md   # 产品需求驱动的 Markdown 报告流程（用户明确要 md 时启用）
 
 ---
 
