@@ -4,9 +4,7 @@ description: |
   对问卷原始数据进行全流程自动化分析，包括基础统计（频率分布 + 人口学概览）、
   交叉分析（不同人群差异对比）和文本分析（开放题主题归纳）。
   支持两种数据来源：用户提供本地 CSV/Excel 文件，或通过问卷 ID/名称从问卷系统直接下载（支持清洗）后分析。
-  默认输出 HTML 满意度报告（含交互式 ECharts 图表，单文件离线可用）；
-  当用户明确要求"md 格式报告"、"markdown 报告"、"产品决策报告"、"专项调研报告"时，
-  改用产品需求驱动的 Markdown 报告流程（按业务问题组织章节、整合文本归纳、给三句结论+三条建议）。
+  默认输出产品需求驱动的 Markdown 报告（按业务问题组织章节、整合文本归纳、给核心结论+建议）。
   当用户要求分析问卷数据、生成问卷调研报告、对比不同人群差异、
   分析开放题文本内容时触发。即使用户没有明确说"问卷"，只要涉及
   调研数据分析、用户反馈分析、满意度分析、NPS 分析等场景也应触发此 skill。
@@ -20,7 +18,7 @@ description: |
 # 问卷研究分析（Survey Research）
 
 你是用户研究合成方面的专家，能够将原始的定性和定量数据转化为驱动产品决策的结构化洞察。帮助用户研究员从访谈、问卷、可用性测试、支持数据和行为分析中提炼有效信息。你将使用 `scripts/` 目录下的 Python 脚本，
-对用户提供的问卷原始数据进行全流程自动化分析，最终输出 HTML 满意度报告。
+对用户提供的问卷原始数据进行全流程自动化分析，最终输出产品需求驱动的 Markdown 报告。
 
 ## 脚本路径
 
@@ -31,7 +29,6 @@ description: |
 {SKILL_DIR}/scripts/crosstab.py
 {SKILL_DIR}/scripts/text_extract.py
 {SKILL_DIR}/scripts/text_export.py
-{SKILL_DIR}/scripts/html_report.py
 {SKILL_DIR}/scripts/report_export.py
 {SKILL_DIR}/scripts/survey_download.py
 {SKILL_DIR}/scripts/refresh_cookie.py
@@ -42,16 +39,16 @@ description: |
 
 ## 依赖要求
 
-脚本依赖 `pandas`、`numpy`、`openpyxl`、`requests`、`jinja2`。如果用户环境缺失，先执行：
+脚本依赖 `pandas`、`numpy`、`openpyxl`、`requests`。如果用户环境缺失，先执行：
 ```bash
-pip install pandas numpy openpyxl requests jinja2
+pip install pandas numpy openpyxl requests
 ```
 
 ---
 
 ## 📁 输出目录规则
 
-**所有产出物（下载数据、统计 Excel、HTML 报告等）统一存放到一个自动创建的文件夹中**，
+**所有产出物（下载数据、统计 Excel、Markdown 报告等）统一存放到一个自动创建的文件夹中**，
 避免文件散落在桌面上。
 
 ### 命名规则
@@ -70,7 +67,7 @@ C:\Users\xxx\Desktop\MC调研_90502\
 ├── survey_90502_MC调研【文本数据】20260101-20260410.xlsx  ← 下载的文本数据（如有）
 ├── survey_90502_MC调研_基础统计_20260101-20260410.xlsx                      ← 系统统计报表（默认下载）
 ├── survey_90502_MC调研_交叉分析.xlsx                      ← 交叉分析结果（如有）
-└── MC_满意度报告_90502.html                               ← HTML 满意度报告
+└── MC_满意度报告_90502.md                                ← Markdown 报告
 ```
 
 ### 执行方式
@@ -222,21 +219,13 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 
 ### 阶段 5：生成报告
 
-**报告格式选择**：
+**默认生成产品需求驱动的 Markdown 报告**——按业务问题组织章节、整合文本归纳、
+给核心结论 + 建议。
 
-- **默认 → HTML 满意度报告**：用户说"出报告"、"分析报告"、"满意度分析"等通用表述时，
-  统一用 `html_report.py` 生成 HTML 报告。
-  → **读取 `references/15-satisfaction-report.md`**
+→ **读取 `references/17-md-report-workflow.md`** 获取完整流程、报告格式合同与强制要素。
 
-- **md 分支 → 产品需求驱动的 Markdown 报告**：用户明确说"生成 md 格式报告"、
-  "markdown 报告"、"出一份 md 报告"、"写 md 报告"、"产品决策报告"、"专项调研报告"等时，
-  切换到本分支——按业务问题（不是通用满意度模板）组织章节，整合文本归纳，
-  给三句结论 + 三条建议。
-  → **读取 `references/17-md-report-workflow.md`**
-
-> ⚠️ **关键差异**：
-> - 15（HTML）：通用大盘 + 满意度/NPS + 细分维度 + 玩家声音 + 预警 + 建议
-> - 17（MD）：按产品需求 A/B/C 分章 + 摘要先行 + 文本归纳为证据 + 每章可执行建议
+> ⚠️ **关键**：先与用户对齐产品需求（要回答哪几个业务决策），再组织章节框架，
+> 不要套通用满意度模板。
 
 ---
 
@@ -264,8 +253,8 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 • 做满意度专项分析（NPS + 细分维度 + 满意/不满原因 + 预警）
 
 📋 报告方面：
-• 重新生成 HTML 满意度报告（调整时间范围/交叉维度等参数）
-• 微调现有报告内容（编辑 HTML 源码中的 REPORT_DATA JSON）
+• 重新生成 Markdown 报告（调整章节/补充文本归纳/调整时间范围等参数）
+• 微调现有报告内容（修改核心结论、增删章节、调整建议优先级）
 ```
 
 **智能裁剪规则**——只展示当前有意义的选项：
@@ -287,7 +276,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 > - 做文本分析，归纳开放题中的核心主题和用户原声
 > - 做满意度专项分析（整体满意度 + NPS + 细分维度得分 + 预警）
 > - 补充其他维度的交叉分析（如「再对比一下不同年龄段的差异」）
-> - 重新生成 HTML 满意度报告（如需调整时间范围或交叉维度）
+> - 重新生成 Markdown 报告（如需调整章节框架或文本归纳）
 > - 从问卷系统下载其他问卷数据（告诉我问卷名称或 ID 即可）
 
 ---
@@ -342,7 +331,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 | `references/09-survey-download.md` | 从问卷系统下载数据的完整流程（数据来源路由 B） |
 | `references/10-survey-clean.md` | 问卷数据清洗规则与操作流程（数据来源路由 B） |
 | `references/11-survey-cookie.md` | Cookie 处理与自动刷新（下载遇到认证问题时） |
-| `references/17-md-report-workflow.md` | **产品需求驱动的 Markdown 报告生成流程**（用户明确要 md 报告时启用，含报告模板与强制要素） |
+| `references/17-md-report-workflow.md` | **产品需求驱动的 Markdown 报告生成流程**（阶段 5 默认流程，含报告格式合同与强制要素） |
 
 ### 核心调用时机
 

@@ -9,6 +9,3 @@ scripts/config_global.json
 # 浏览器自动登录产生的缓存目录
 scripts/.browser_profile/
 scripts/.browser_profile_global/
-
-# ECharts 离线副本（太大，不入库；README 中有下载说明）
-scripts/templates/echarts.min.js

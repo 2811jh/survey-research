@@ -64,4 +64,4 @@ python {SKILL_DIR}/scripts/crosstab.py \
 
 ---
 
-完成后继续执行下一阶段（如有），或跳转到 `references/14-report-workflow.md` 生成报告。
+完成后继续执行下一阶段（如有），或跳转到 `references/17-md-report-workflow.md` 生成报告。

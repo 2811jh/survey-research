@@ -146,4 +146,4 @@ python {SKILL_DIR}/scripts/text_export.py \
 
 ---
 
-完成后跳转到 `references/14-report-workflow.md` 生成综合报告。
+完成后跳转到 `references/17-md-report-workflow.md` 生成综合报告。
