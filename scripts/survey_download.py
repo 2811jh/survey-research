@@ -110,6 +110,21 @@ def _json_output(data):
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def _parse_traps(s):
+    """解析 --traps 参数：None → None；"all" → "all"；"7,9,10" → {7,9,10}"""
+    if not s:
+        return None
+    s = s.strip()
+    if s.lower() == "all":
+        return "all"
+    out = set()
+    for part in s.replace("，", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return out or None
+
+
 STATUS_FILENAME = ".download_status.json"
 
 
@@ -365,6 +380,13 @@ _JOB_WORKING_KEYWORDS = [
 _SATISFACTION_KEYWORDS = ['满意', '满意度']
 _NPS_KEYWORDS = ['推荐', 'NPS', 'nps', '净推荐']
 
+# 陷阱选项识别：门控追问题里「否定型」互斥选项的文本特征
+# （如「我认为XX没有问题」「以上都没有」——与"进入追问=有不满"的前提自相矛盾）
+_TRAP_NEGATION_KEYWORDS = [
+    '没有问题', '没问题', '都没有', '以上都没有', '以上均无', '均没有',
+    '没有以上', '没有任何问题', '不涉及', '均无', '没有遇到', '都不',
+]
+
 
 def _classify_options(options, keywords):
     """从选项列表中筛选出包含任一关键词的选项 ID"""
@@ -412,14 +434,92 @@ def _get_scale_option_ids(options, value_range):
     return matched
 
 
-def build_clean_conditions(questions):
+def _q_index(q):
+    """题目题号（index），尽量返回 int，无法解析时原样返回。"""
+    v = q.get('index')
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return v
+
+
+def detect_trap_options(questions):
+    """
+    识别「陷阱选项」。
+
+    定义：某追问题只有在玩家先在父题选了某个"不满 / 有问题"选项后才会被
+    显示（被父题的 `logic` 门控），而该追问题里又存在一个 `mutex=1` 的互斥
+    选项，且文本是"否定型"（如「我认为XX没有问题」「以上都没有」）。
+    玩家既进入了追问（说明确有不满），又勾选"没问题" → 自相矛盾，属无效作答。
+
+    返回: [{
+        "index": 追问题题号, "question_id", "question_title"(简短),
+        "option_id", "option_text",
+        "gated_by_index": 父题题号, "gated_by_options": [触发它显示的父题选项文本],
+    }, ...]
+    """
+    by_id = {q.get('id'): q for q in questions}
+
+    # 1. 建立「被门控追问题 id -> [ (父题, 触发其显示的父题选项ids) ... ]」映射
+    #    一个追问题可能被多个父题门控（如同时被满意度矩阵低分 + 不满多选选项触发）
+    gated = {}
+    for q in questions:
+        for L in (q.get('logic') or []):
+            opt_ids = L.get('options') or []
+            for tqid in (L.get('questions') or []):
+                gated.setdefault(tqid, []).append({"parent": q, "option_ids": set(opt_ids)})
+
+    def _gate_labels(parents):
+        """把门控父题整理成可读列表：['Q6:社交体验不好', 'Q3', ...]"""
+        labels = []
+        for p in parents:
+            parent = p["parent"]
+            pidx = _q_index(parent)
+            p_opts = parent.get('options') or []
+            texts = [
+                _strip_html(po.get('text'))[:20]
+                for po in p_opts if po.get('id') in p["option_ids"]
+            ]
+            # 忽略纯数字（矩阵量表分值）作为标签，避免显示 "1/2/3"
+            texts = [t for t in texts if not t.isdigit()]
+            labels.append(f"Q{pidx}:{texts[0]}" if texts else f"Q{pidx}")
+        return labels
+
+    traps = []
+    for qid, parents in gated.items():
+        q = by_id.get(qid)
+        if not q:
+            continue
+        for o in (q.get('options') or []):
+            is_mutex = str(o.get('mutex')) in ('1', 'True', 'true')
+            text = _strip_html(o.get('text'))
+            if is_mutex and any(k in text for k in _TRAP_NEGATION_KEYWORDS):
+                gate_labels = _gate_labels(parents)
+                traps.append({
+                    "index": _q_index(q),
+                    "question_id": qid,
+                    "question_title": _strip_html(q.get('title'))[:40],
+                    "option_id": o.get('id'),
+                    "option_text": text,
+                    "gated_by": gate_labels,
+                    "gated_by_summary": " / ".join(gate_labels),
+                })
+    traps.sort(key=lambda t: t["index"] if isinstance(t["index"], int) else 9999)
+    return traps
+
+
+def build_clean_conditions(questions, include_trap_indices=None):
     """
     根据问卷题目结构，自动构建清洗条件。
-    
+
+    include_trap_indices: 需要一并剔除的陷阱题题号集合，或字符串 "all"（全部）；
+        None 表示不应用任何陷阱条件（仅在预览中列出候选）。
+
     返回: {
         "conditions": [...],           # 可直接传给 set_dc_condition 的条件列表
         "rules_applied": [...],        # 已应用的规则描述
         "rules_skipped": [...],        # 跳过的规则及原因
+        "trap_candidates": [...],      # 检测到的陷阱选项候选（供用户勾选）
     }
     """
     conditions = []
@@ -526,10 +626,28 @@ def build_clean_conditions(questions):
         else:
             rules_skipped.append("⑤ 满意度-NPS冲突：题目不是量表类型（跳过）")
 
+    # ── 规则 ⑥：陷阱选项（门控追问题里的否定型互斥选项，仅按用户勾选应用）──
+    trap_candidates = detect_trap_options(questions)
+    if include_trap_indices:
+        if include_trap_indices == "all":
+            want = {t["index"] for t in trap_candidates}
+        else:
+            want = set(include_trap_indices)
+        for t in trap_candidates:
+            if t["index"] in want:
+                conditions.append({
+                    "and": [{"name": t["question_id"], "op": "EQ", "values": [t["option_id"]]}]
+                })
+                rules_applied.append(
+                    f"⑥ 剔除陷阱选项：Q{t['index']}「{t['question_title']}」勾选了互斥项"
+                    f"「{t['option_text']}」（该题仅在 {t['gated_by_summary']} 时才弹出）"
+                )
+
     return {
         "conditions": conditions,
         "rules_applied": rules_applied,
         "rules_skipped": rules_skipped,
+        "trap_candidates": trap_candidates,
     }
 
 
@@ -740,10 +858,11 @@ class SurveyDownloader:
         )
         return resp.json()
 
-    def auto_clean(self, survey_id, dry_run=False):
+    def auto_clean(self, survey_id, dry_run=False, trap_indices=None):
         """
         自动清洗：识别问卷结构 → 构建清洗规则 → (可选)提交到服务端
         dry_run: 仅预览规则，不实际提交
+        trap_indices: 需一并剔除的陷阱题题号集合，或 "all"；None 表示不应用陷阱条件
         返回: {"status": "success/preview/error", "rules_applied": [...], ...}
         """
         # 1. 获取问卷完整题目结构
@@ -754,14 +873,19 @@ class SurveyDownloader:
         _log(f"Loaded {len(questions)} questions for cleaning analysis")
 
         # 2. 自动构建清洗条件
-        result = build_clean_conditions(questions)
+        result = build_clean_conditions(questions, include_trap_indices=trap_indices)
         conditions = result["conditions"]
+        trap_candidates = result.get("trap_candidates", [])
 
         _log(f"Built {len(conditions)} cleaning conditions")
         for r in result["rules_applied"]:
             _log(f"  ✓ {r}")
         for r in result["rules_skipped"]:
             _log(f"  ⊘ {r}")
+        if trap_candidates:
+            _log(f"Detected {len(trap_candidates)} trap option(s) (opt-in):")
+            for t in trap_candidates:
+                _log(f"  ⚠ Q{t['index']} 「{t['option_text']}」(gated by {t['gated_by_summary']})")
 
         # 3. 如果是预览模式，返回规则不提交
         if dry_run:
@@ -772,6 +896,7 @@ class SurveyDownloader:
                 "total_conditions": len(conditions),
                 "rules_applied": result["rules_applied"],
                 "rules_skipped": result["rules_skipped"],
+                "trap_candidates": trap_candidates,
             }
 
         # 4. 提交清洗条件
@@ -791,6 +916,7 @@ class SurveyDownloader:
             "total_conditions": len(conditions),
             "rules_applied": result["rules_applied"],
             "rules_skipped": result["rules_skipped"],
+            "trap_candidates": trap_candidates,
         }
 
     # ── 获取问卷创建时间 ─────────────────────────────────────────────────
@@ -1080,9 +1206,14 @@ class SurveyDownloader:
         filename = f"survey_{survey_id}{name_part}_基础统计{date_range}.xlsx"
         filepath = os.path.join(output_dir, filename)
 
-        with open(filepath, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
+        try:
+            with open(filepath, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        except PermissionError:
+            _log(f"WARNING: 统计报表写入被拒绝（文件可能正被 Excel 打开）：{filepath}。"
+                 f"跳过统计报表，原始数据不受影响。")
+            return None
 
         file_size = os.path.getsize(filepath)
         _log(f"Downloaded stat report: {filepath} ({file_size:,} bytes)")
@@ -1092,7 +1223,7 @@ class SurveyDownloader:
 
     def run(self, survey_id=None, survey_name=None, export_type="both",
             start_date=None, end_date=None, output_dir=None, select_index=None,
-            clean=False, skip_existing=False, download_stat=True):
+            clean=False, skip_existing=False, download_stat=True, trap_indices=None):
         """
         主入口：搜索问卷 → (可选)自动清洗 → 触发导出 → 等待完成 → 下载文件
         export_type: "both" | "text" | "quantified"
@@ -1194,7 +1325,7 @@ class SurveyDownloader:
         clean_result = None
         if clean:
             _log("Running auto-clean...")
-            clean_result = self.auto_clean(target_id)
+            clean_result = self.auto_clean(target_id, trap_indices=trap_indices)
             if clean_result["status"] == "success":
                 _log(f"Auto-clean done: {clean_result['message']}")
             else:
@@ -1383,6 +1514,8 @@ def main():
     clean_p = subparsers.add_parser("clean", help="自动配置问卷数据清洗条件")
     clean_p.add_argument("--id", type=int, required=True, help="问卷 ID")
     clean_p.add_argument("--dry-run", action="store_true", help="仅预览规则，不实际提交")
+    clean_p.add_argument("--traps", default=None,
+                          help="一并剔除的陷阱题题号，逗号分隔（如 7,9,10,11）或 all；缺省不应用陷阱条件")
 
     # ── download: 下载数据 ──────────────────────────────────────────────
     dl_p = subparsers.add_parser("download", help="下载问卷数据")
@@ -1401,6 +1534,8 @@ def main():
                        help="输出目录已有同问卷同类型文件时跳过下载，直接复用")
     dl_p.add_argument("--no-stat", action="store_true",
                        help="跳过下载系统统计报表（默认同时下载统计报表）")
+    dl_p.add_argument("--traps", default=None,
+                       help="一并剔除的陷阱题题号，逗号分隔（如 7,9,10,11）或 all；需配合 --clean")
 
     args = parser.parse_args()
     if not args.command:
@@ -1459,7 +1594,7 @@ def main():
                     })
                     return
         dry_run = getattr(args, 'dry_run', False)
-        result = downloader.auto_clean(args.id, dry_run=dry_run)
+        result = downloader.auto_clean(args.id, dry_run=dry_run, trap_indices=_parse_traps(args.traps))
         _json_output(result)
 
     elif args.command == "download":
@@ -1474,6 +1609,7 @@ def main():
             clean=args.clean,
             skip_existing=args.skip_existing,
             download_stat=not args.no_stat,
+            trap_indices=_parse_traps(args.traps),
         )
         _json_output(result)
 

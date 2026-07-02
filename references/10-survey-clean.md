@@ -11,6 +11,32 @@
 | ③ 年龄-职业冲突 | 年龄<18岁 且 职业为工作人群（**不含**自由职业/自雇/自媒体/无固定工作/兼职） | 需存在年龄题和职业题，否则跳过 |
 | ④ 职业-年龄冲突 | 职业为学生(小/初/高) 且 年龄≥30岁 | 需存在年龄题和职业题，否则跳过 |
 | ⑤ 满意度-NPS冲突 | 低满意(1分)+高推荐(9-10分) 或 高满意(5分)+低推荐(0-1分) | 需同时存在满意度题和NPS题，否则跳过 |
+| ⑥ 陷阱选项（**默认不自动应用，需用户勾选**） | 剔除在「门控追问题」里勾选了否定型互斥选项的答卷 | 见下方「陷阱选项识别」 |
+
+## ⭐ 陷阱选项识别（智能，需用户确认）
+
+**什么是陷阱选项**：某追问题只有在玩家先在父题选了"某项不满 / 有问题"后才会弹出
+（被父题的 `logic` 门控）；而该追问题里又有一个 `mutex=1` 的互斥选项，文本是否定型
+（如「我认为XX没有问题」「以上都没有」）。玩家**既进入了追问（说明有不满），又选了"没问题"**
+→ 自相矛盾，属无效作答，应剔除。
+
+**识别范围（避免误报）**：仅 `被门控追问题 + mutex 互斥 + 否定文本`（`没有问题/都没有/不涉及`等）
+三者同时满足才算候选，脚本自动完成，不硬编码题号。
+
+**流程**（在 `--dry-run` 预览时，脚本会额外输出 `trap_candidates` 列表）：
+
+1. 读取 `clean --dry-run` 返回的 `trap_candidates`，每项含：
+   `index`(题号) / `question_title` / `option_text`(陷阱选项文本) / `gated_by_summary`(被哪些父题门控)。
+2. **用 `ask_user_question` 一次性多选**（`multiSelect: true`）让用户勾选要剔除哪些陷阱题。
+   每个选项 label 形如：`Q7 我认为游戏环境没有问题（仅Q6选"游戏环境不好"后弹出）`。
+   **只问这一次**，不要逐题追问。
+3. 用户勾选后，把选中的题号通过 `--traps` 传入下载：
+   ```bash
+   python survey_download.py --platform cn download --id 问卷ID --clean --traps 7,9,10,11 --output_dir "目录"
+   ```
+   `--traps` 支持 `7,9,10,11` 或 `all`（全部陷阱）；不传则不应用任何陷阱条件。
+
+> 💡 若 `trap_candidates` 为空，跳过此步，不打扰用户。
 
 ## 流程（必须先预览再执行）
 
@@ -20,11 +46,12 @@
 python {SKILL_DIR}/scripts/survey_download.py clean --id 问卷ID --dry-run
 ```
 
-返回 `"status": "preview"` 及 `rules_applied`（将应用的规则）和 `rules_skipped`（跳过的规则）。
+返回 `"status": "preview"` 及 `rules_applied`（将应用的规则）、`rules_skipped`（跳过的规则），
+以及 `trap_candidates`（检测到的陷阱选项候选，可能为空）。
 
 ### 第二步：让用户确认
 
-用 `ask_user_question` 展示规则，格式：
+先用 `ask_user_question` 展示固定规则（①~⑤），格式：
 
 ```
 以下是问卷 xxx 的自动清洗规则：
@@ -43,22 +70,28 @@ python {SKILL_DIR}/scripts/survey_download.py clean --id 问卷ID --dry-run
 - "不需要清洗"
 - "取消操作"
 
+**若 `trap_candidates` 非空**，紧接着**再用一次 `ask_user_question`（`multiSelect: true`）**
+让用户勾选要一并剔除的陷阱题（只问这一次）。每项 label 形如：
+`Q7 我认为游戏环境没有问题（仅 Q6 选"游戏环境不好"后弹出）`。
+
 ### 第三步：执行
 
 用户确认后：
 
-**单独清洗**：
+**单独清洗**（含勾选的陷阱题）：
 ```bash
-python {SKILL_DIR}/scripts/survey_download.py clean --id 问卷ID
+python {SKILL_DIR}/scripts/survey_download.py clean --id 问卷ID --traps 7,9,10,11
 ```
 
 **清洗+下载**（确认后直接下载，具体下载参数详见 `09-survey-download.md`）：
 ```bash
-python {SKILL_DIR}/scripts/survey_download.py download --id 问卷ID --clean --output_dir "目录"
+python {SKILL_DIR}/scripts/survey_download.py download --id 问卷ID --clean --traps 7,9,10,11 --output_dir "目录"
 ```
+> `--traps` 传用户勾选的题号（逗号分隔）或 `all`；不传则只应用 ①~⑤ 固定规则。
 
 ## 智能识别逻辑
 
 - 通过**题目标题关键词**识别：年龄题（含"年龄"）、职业题（含"职业"）、满意度题（含"满意"）、NPS题（含"推荐"/"NPS"）
 - 通过**选项文本关键词**分类：年轻/年长、学生/工作人群、量表分值
+- **陷阱选项**通过 `logic`（门控关系）+ 选项 `mutex`（互斥标记）+ 否定文本三重信号识别，不硬编码题号
 - 缺失题目时相关规则自动跳过，不报错
