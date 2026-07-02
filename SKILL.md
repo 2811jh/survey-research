@@ -298,6 +298,21 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
      
      脚本运行完会自动输出 JSON 结果，不需要你做任何额外的等待操作。
 
+   - **⭐ 终端超时截断的处理（关键）**：大文件下载时，终端可能在脚本跑完前就返回
+     「output so far」（截断），此时你**看不到最终 JSON**。**不要靠 `dir` 猜是否完成**。
+     `download` 命令会在输出目录写一个状态文件 **`.download_status.json`**：
+     - 下载开始时写入 `{"status": "running", ...}`
+     - 全部完成（或失败）后覆盖为最终结果（含 `status`、`files` 路径、`clean` 等）
+
+     **正确做法**——当终端返回被截断时，用 `read_file` 读该状态文件判断：
+     - `"status": "running"` → 仍在处理，稍等一会（约 1-2 分钟）后再读一次，**只读文件、不轮询目录**
+     - `"status": "success"` → 已完成，直接从 `files` 拿产物路径回复用户
+     - `"status": "error"` / 其他 → 按 `message` 告知失败原因
+
+     ```
+     读取路径：{output_dir}\.download_status.json
+     ```
+
 3. **Windows 路径**：在 Windows 上执行脚本时，文件路径使用正斜杠或双反斜杠。
 
 4. **错误处理**：如果脚本报错，检查：

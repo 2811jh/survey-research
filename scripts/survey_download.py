@@ -110,6 +110,30 @@ def _json_output(data):
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+STATUS_FILENAME = ".download_status.json"
+
+
+def _write_status(output_dir, data):
+    """
+    将下载状态/最终结果写入 {output_dir}/.download_status.json。
+
+    用途：大文件下载耗时长，调用方（agent）的终端可能在脚本结束前超时截断 stdout，
+    导致拿不到最终结果 JSON。此时调用方只需读取该状态文件即可确定性地判断：
+    是否完成、成功与否、产物文件路径，无需盲目轮询目录。
+    """
+    if not output_dir:
+        return
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        payload = dict(data)
+        payload["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        path = os.path.join(output_dir, STATUS_FILENAME)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        _log(f"WARNING: failed to write status file: {e}")
+
+
 def _strip_html(text):
     """去除 HTML 标签，返回纯文本"""
     return re.sub(r'<[^>]+>', '', text or '').strip()
@@ -273,6 +297,9 @@ def _merge_xlsx_files(file_list, output_path):
     file_list.sort()
     total_size_mb = sum(os.path.getsize(f) for f in file_list) / 1024 / 1024
     _log(f"Merging {len(file_list)} XLSX files → CSV (total {total_size_mb:.1f} MB, engine={engine})...")
+    if total_size_mb > 40:
+        est_min = max(1, round(total_size_mb / 40))
+        _log(f"  ⏳ 大文件合并预计约 {est_min}-{est_min + 1} 分钟；若终端提前返回，请读取输出目录下 {STATUS_FILENAME} 判断是否完成。")
 
     try:
         # 对于大文件（>15MB），采用流式写入避免内存峰值
@@ -1220,6 +1247,14 @@ class SurveyDownloader:
             output_dir = os.getcwd()
         os.makedirs(output_dir, exist_ok=True)
 
+        # 写入「进行中」状态，供调用方在终端超时截断时读取判断进度
+        _write_status(output_dir, {
+            "status": "running",
+            "survey_id": target_id,
+            "survey_name": target_name,
+            "message": "下载中：正在触发导出 / 等待服务端 / 下载合并，请稍候…",
+        })
+
         files = {}
         types_need_download = []
         if skip_existing:
@@ -1261,6 +1296,7 @@ class SurveyDownloader:
             }
             if clean_result:
                 result["clean"] = clean_result
+            _write_status(output_dir, result)
             return result
 
         # 6. 触发导出（仅针对需要下载的类型）
@@ -1279,6 +1315,7 @@ class SurveyDownloader:
         _log("Waiting for export to complete...")
         wait_result = self.wait_for_export(target_id, target_type_set)
         if wait_result["status"] != "success":
+            _write_status(output_dir, wait_result)
             return wait_result
 
         _log("Export completed!")
@@ -1311,6 +1348,7 @@ class SurveyDownloader:
         }
         if clean_result:
             result["clean"] = clean_result
+        _write_status(output_dir, result)
         return result
 
 

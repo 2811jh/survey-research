@@ -85,6 +85,23 @@ python {SKILL_DIR}/scripts/survey_download.py download --id 确定的ID --output
 
 如果用户反馈文件打不开或太大，建议用 `--type text` 只下载 CSV 文本数据。
 
+## ⭐ 完成状态文件（终端超时时如何判断完成）
+
+大文件下载耗时较长，终端命令可能在脚本结束前就被截断（返回「output so far」），
+此时拿不到最终 JSON。为此 `download` 会在**输出目录**写状态文件 `.download_status.json`：
+
+| 阶段 | 内容 |
+|------|------|
+| 下载开始 | `{"status": "running", "survey_id": ..., "message": "下载中…"}` |
+| 完成 | 覆盖为最终结果：`{"status": "success", "files": {...}, ...}` |
+| 失败 | `{"status": "error"/"...", "message": "..."}` |
+
+**判断流程（不要盲目 `dir` 轮询）**：终端被截断时，用 `read_file` 读
+`{output_dir}\.download_status.json`：
+- `running` → 稍等 1-2 分钟后再读一次
+- `success` → 完成，从 `files` 取路径
+- 其他 → 按 `message` 处理错误
+
 ## 输出目录结构示例
 
 下载 28k 条数据的问卷（触发分片）后，输出目录的结构：
