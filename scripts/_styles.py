@@ -512,14 +512,32 @@ def write_structured_report(ws, report_data, percent_df=None, col_labels=None):
 # ========================================================================= #
 
 class TextReportTheme:
-    """文本分析报告配色"""
-    CONCLUSION_BG = "E2EFDA"
-    CONCLUSION_FONT = "375623"
-    DIMENSION_HEADER_BG = "4472C4"
+    """文本分析报告配色（Slate + Indigo 设计系统，深色标题 + 靛蓝点缀 + 干净斑马纹）"""
+    # 结构色
+    TITLE_BG = "1E293B"        # slate-800 大标题 / 明细表头
+    SUBTITLE_BG = "334155"     # slate-700 题目条 / 概览表头
+    ZEBRA_ALT = "F1F5F9"       # slate-100 斑马纹间隔行
+    WHITE = "FFFFFF"
+    # 文本色
+    TEXT_MAIN = "1E293B"       # slate-900 主文本
+    TEXT_SUB = "475569"        # slate-600 次要文本（原文）
+    TEXT_MUTE = "94A3B8"       # slate-400 弱化文本（序号 / 其他类别）
+    # 靛蓝点缀
+    INDIGO_BG = "EEF2FF"       # indigo-50 结论底
+    INDIGO_ACCENT_BG = "E0E7FF"  # indigo-100 序号列底
+    INDIGO_DEEP = "312E81"     # indigo-900 结论字
+    INDIGO_MAIN = "4338CA"     # indigo-700 序号字 / 占比字
+    INDIGO_CHIP = "4F46E5"     # indigo-600 明细类别字
+    NOTE_BG = "F8FAFC"         # slate-50 方法说明底
+
+    # ---- 兼容旧引用（其余脚本 / 历史代码可能仍读取）----
+    CONCLUSION_BG = "EEF2FF"
+    CONCLUSION_FONT = "312E81"
+    DIMENSION_HEADER_BG = "334155"
     DIMENSION_HEADER_FONT = "FFFFFF"
     EXAMPLE_BG = "FFF2CC"
     EXAMPLE_FONT = "7F6000"
-    DETAIL_HEADER_BG = "2F5496"
+    DETAIL_HEADER_BG = "1E293B"
     DETAIL_HEADER_FONT = "FFFFFF"
 
 

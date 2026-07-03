@@ -51,6 +51,7 @@ from _styles import (
 from text_extract import clean_column_texts
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.formatting.rule import DataBarRule
 
 
 def _clean_filename_part(text: str, max_len: int = 24) -> str:
@@ -312,6 +313,33 @@ def _augment_conclusion(conclusion: str, dims: list, total: int) -> str:
     return (base + "\n" + stat) if base else stat
 
 
+# ---- 可视化辅助（自适应行高 / 占比数值解析） ----
+
+
+def _visual_len(s):
+    """中日文字算 2 宽，其余算 1 宽，用于估算换行后的视觉行数。"""
+    return sum(2 if ord(ch) > 0x2E7F else 1 for ch in str(s or ""))
+
+
+def _estimate_row_height(text, col_width, line_px=16, min_px=24, max_px=409, pad=6):
+    """按文本视觉长度 + 显式换行估算自适应行高（上限 409，Excel 行高极限）。"""
+    if not text:
+        return min_px
+    lines = 0
+    for seg in str(text).split("\n"):
+        vlen = _visual_len(seg)
+        lines += max(1, -(-vlen // max(1, int(col_width))))  # ceil
+    return max(min_px, min(max_px, lines * line_px + pad))
+
+
+def _pct_to_float(pct):
+    """"20.0%" → 0.20；解析失败返回 0.0。"""
+    try:
+        return float(str(pct).replace("%%", "%").replace("%", "").strip()) / 100.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
     """
     写入单题的总结概览 sheet（纯 openpyxl 手写竖排布局）。
@@ -328,6 +356,7 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
     conclusion = question_data.get("conclusion", "")
     dimensions = question_data.get("dimensions", [])
 
+    TR = TextReportTheme
     sheet_name = "总结概览"
 
     # 创建 sheet（不用 pandas）
@@ -339,118 +368,172 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
 
     # ---- 第1行：大标题 ----
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
-    cell = ws.cell(row=row, column=1, value="文本分析报告")
-    cell.fill = make_fill(Theme.HEADER_BG)
-    cell.font = Font(name=Theme.FONT_NAME, size=16, bold=True, color=Theme.HEADER_FONT)
-    cell.alignment = ALIGN_CENTER
+    cell = ws.cell(row=row, column=1, value="  文本分析报告")
+    cell.fill = make_fill(TR.TITLE_BG)
+    cell.font = Font(name=Theme.FONT_NAME, size=18, bold=True, color=TR.WHITE)
+    cell.alignment = ALIGN_LEFT
     cell.border = border
-    ws.row_dimensions[row].height = 42
+    ws.row_dimensions[row].height = 48
     for c in range(2, total_width + 1):
         ws.cell(row=row, column=c).border = border
     row += 1
 
-    # ---- 第2行：题目名称 ----
+    # ---- 第2行：题目 ----
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
-    cell = ws.cell(row=row, column=1, value=f"题目：{question}")
-    cell.fill = make_fill(TextReportTheme.DIMENSION_HEADER_BG)
-    cell.font = Font(name=Theme.FONT_NAME, size=12, bold=True, color=TextReportTheme.DIMENSION_HEADER_FONT)
+    cell = ws.cell(row=row, column=1, value=f"  题目  ·  {question}")
+    cell.fill = make_fill(TR.SUBTITLE_BG)
+    cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.WHITE)
     cell.alignment = ALIGN_LEFT
     cell.border = border
-    ws.row_dimensions[row].height = 32
+    ws.row_dimensions[row].height = 34
     for c in range(2, total_width + 1):
         ws.cell(row=row, column=c).border = border
     row += 1
 
     # ---- 第3行：核心结论 ----
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
-    # 清洗 %% → %（防止双重转义）
     conclusion_clean = conclusion.replace("%%", "%") if conclusion else ""
-    conclusion_display = f"核心结论：{conclusion_clean}" if conclusion_clean else ""
+    conclusion_display = f"  核心结论    {conclusion_clean}" if conclusion_clean else ""
     cell = ws.cell(row=row, column=1, value=conclusion_display)
-    cell.fill = make_fill(TextReportTheme.CONCLUSION_BG)
-    cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TextReportTheme.CONCLUSION_FONT)
+    cell.fill = make_fill(TR.INDIGO_BG)
+    cell.font = Font(name=Theme.FONT_NAME, size=11, bold=False, color=TR.INDIGO_DEEP)
     cell.alignment = ALIGN_TOP_LEFT
     cell.border = border
-    line_count = max(1, len(conclusion_display) // 80 + 1)
-    ws.row_dimensions[row].height = max(60, line_count * 20)
+    ws.row_dimensions[row].height = _estimate_row_height(conclusion_display, 126, line_px=18, min_px=64)
     for c in range(2, total_width + 1):
         ws.cell(row=row, column=c).border = border
     row += 1
 
     # ---- 第4行：空行 ----
-    ws.row_dimensions[row].height = 10
+    ws.row_dimensions[row].height = 14
     row += 1
 
     # ---- 维度统计表 ----
     if dimensions:
         # 表头
         headers = ["序号", "问题类别", "反馈条数", "占比", "典型用户原文"]
-        dim_header_fill = make_fill(TextReportTheme.DIMENSION_HEADER_BG)
-        dim_header_font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TextReportTheme.DIMENSION_HEADER_FONT)
+        h_fill = make_fill(TR.SUBTITLE_BG)
+        h_font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
+        h_aligns = [ALIGN_CENTER, ALIGN_LEFT, ALIGN_CENTER, ALIGN_CENTER, ALIGN_CENTER]
         for ci, h in enumerate(headers, 1):
             cell = ws.cell(row=row, column=ci, value=h)
-            cell.fill = dim_header_fill
-            cell.font = dim_header_font
-            cell.alignment = ALIGN_CENTER
+            cell.fill = h_fill
+            cell.font = h_font
+            cell.alignment = h_aligns[ci - 1]
             cell.border = border
         ws.row_dimensions[row].height = 30
         row += 1
 
-        # 数据行
+        # 数据行（干净斑马纹 + 靛蓝序号列 + 占比 DataBar）
+        first_data_row = row
+        acc_fill = make_fill(TR.INDIGO_ACCENT_BG)
         for di, dim in enumerate(dimensions, 1):
             examples = dim.get("examples", [])
-            # 用 bullet list 换行连接全部 examples
-            example_text = "\n".join(f"• {ex}" for ex in examples)
+            example_text = "\n".join(f"·  {ex}" for ex in examples)
 
-            # 序号
+            is_other = dim.get("name", "") == OTHER_CANON
+            pct_f = _pct_to_float(dim.get("percentage", "0%"))
+            zebra = make_fill(TR.ZEBRA_ALT) if di % 2 == 0 else make_fill(TR.WHITE)
+
+            name_color = TR.TEXT_MUTE if is_other else TR.TEXT_MAIN
+            pct_color = TR.TEXT_MUTE if is_other else TR.INDIGO_MAIN
+
+            # 序号（靛蓝强调列）
             cell = ws.cell(row=row, column=1, value=di)
-            cell.fill = even_fill() if di % 2 == 0 else odd_fill()
-            cell.font = body_font()
+            cell.fill = acc_fill
+            cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.INDIGO_MAIN)
             cell.alignment = ALIGN_CENTER
             cell.border = border
 
             # 问题类别
             cell = ws.cell(row=row, column=2, value=dim.get("name", ""))
-            cell.fill = index_fill()
-            cell.font = index_font(bold=True)
+            cell.fill = zebra
+            cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=name_color)
             cell.alignment = ALIGN_LEFT
             cell.border = border
 
             # 反馈条数
             cell = ws.cell(row=row, column=3, value=dim.get("count", 0))
-            cell.fill = even_fill() if di % 2 == 0 else odd_fill()
-            cell.font = body_font()
+            cell.fill = zebra
+            cell.font = Font(name=Theme.FONT_NAME, size=10, color=name_color)
             cell.alignment = ALIGN_CENTER
             cell.border = border
 
-            # 占比（清洗 %% → %）
-            pct_val = str(dim.get("percentage", "0%")).replace("%%", "%")
-            cell = ws.cell(row=row, column=4, value=pct_val)
-            cell.fill = even_fill() if di % 2 == 0 else odd_fill()
-            cell.font = body_font()
-            cell.alignment = ALIGN_CENTER
+            # 占比（真数值 + 0.0% 格式 + DataBar）
+            cell = ws.cell(row=row, column=4, value=pct_f)
+            cell.number_format = '0.0%'
+            cell.fill = zebra
+            cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=pct_color)
+            cell.alignment = ALIGN_RIGHT
             cell.border = border
 
-            # 典型用户原文（bullet list）
+            # 典型用户原文
             cell = ws.cell(row=row, column=5, value=example_text)
-            cell.fill = even_fill() if di % 2 == 0 else odd_fill()
-            cell.font = body_font()
+            cell.fill = zebra
+            cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_SUB)
             cell.alignment = ALIGN_TOP_LEFT
             cell.border = border
 
-            # 根据 examples 数量自动调整行高（每条原声约 18px）
-            example_lines = max(1, len(examples))
-            ws.row_dimensions[row].height = max(28, example_lines * 18)
+            ws.row_dimensions[row].height = _estimate_row_height(example_text, 68, line_px=17, min_px=56)
             row += 1
 
-    # ---- 列宽 ----
-    ws.column_dimensions['A'].width = 8   # 序号
-    ws.column_dimensions['B'].width = 30  # 问题类别
-    ws.column_dimensions['C'].width = 12  # 反馈条数
-    ws.column_dimensions['D'].width = 10  # 占比
-    ws.column_dimensions['E'].width = 70  # 典型用户原文
+        # 占比列 DataBar（靛蓝条形）
+        if row > first_data_row:
+            rule = DataBarRule(
+                start_type='num', start_value=0,
+                end_type='max',
+                color=TR.INDIGO_CHIP,
+                showValue=True, minLength=0, maxLength=100,
+            )
+            ws.conditional_formatting.add(f"D{first_data_row}:D{row - 1}", rule)
 
-    ws.sheet_properties.tabColor = "C6EFCE"
+        # ---- 分析方法说明（表格下方注释，专业化） ----
+        n_total = len(question_data.get("details", []))
+        n_dims = sum(1 for d in dimensions if d.get("name", "") != OTHER_CANON)
+        row += 1
+        ws.row_dimensions[row].height = 12
+        row += 1
+
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
+        cell = ws.cell(row=row, column=1, value="  分析方法说明")
+        cell.fill = make_fill(TR.SUBTITLE_BG)
+        cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
+        cell.alignment = ALIGN_LEFT
+        cell.border = border
+        ws.row_dimensions[row].height = 26
+        for c in range(2, total_width + 1):
+            ws.cell(row=row, column=c).border = border
+        row += 1
+
+        note_lines = [
+            "· 方法：采用归纳式（自下而上）主题分析——先逐条阅读用户原文并开放编码，再将相近标签聚合为主题维度，未预设分类框架。",
+            f"· 样本：有效抽样 N={n_total} 条；共归纳出 {n_dims} 个主题维度 + 1 个「其他/未归类」。",
+            "· 多标签：一条反馈可同时命中多个维度，故各维度占比之和可能 > 100%（占比 = 该维度条数 ÷ N）。",
+            "· 数据一致性：上表「反馈条数 / 占比」均由脚本从「逐条明细」页实时反算，两页数据完全一致，可逐条核对。",
+            "· 「其他/未归类」：无实质建议（如“很好”“没有”）或无法归入上述主题的反馈；占比越低说明主题覆盖越充分。",
+            "· 典型用户原文：从真实命中该维度的反馈中选取，均可在「逐条明细」页检索验证。",
+        ]
+        note_text = "\n".join(note_lines)
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
+        cell = ws.cell(row=row, column=1, value=note_text)
+        cell.fill = make_fill(TR.NOTE_BG)
+        cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_SUB)
+        cell.alignment = ALIGN_TOP_LEFT
+        cell.border = border
+        ws.row_dimensions[row].height = _estimate_row_height(note_text, 126, line_px=15, min_px=94)
+        for c in range(2, total_width + 1):
+            ws.cell(row=row, column=c).border = border
+        row += 1
+
+    # ---- 列宽 ----
+    ws.column_dimensions['A'].width = 7    # 序号
+    ws.column_dimensions['B'].width = 32   # 问题类别
+    ws.column_dimensions['C'].width = 11   # 反馈条数
+    ws.column_dimensions['D'].width = 14   # 占比
+    ws.column_dimensions['E'].width = 72   # 典型用户原文
+
+    ws.freeze_panes = "A6"
+    ws.sheet_properties.tabColor = TR.TITLE_BG
     ws.sheet_view.showGridLines = False
 
     return sheet_name
@@ -465,12 +548,13 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
     question = question_data.get("question", f"题目{sheet_idx}")
     details = question_data.get("details", [])
 
+    TR = TextReportTheme
     sheet_name = "逐条明细"
 
     if not details:
         ws = writer.book.create_sheet(sheet_name)
         ws.cell(row=1, column=1, value="暂无明细数据")
-        ws.sheet_properties.tabColor = "F8CBAD"
+        ws.sheet_properties.tabColor = TR.TEXT_SUB
         return sheet_name
 
     ws = writer.book.create_sheet(sheet_name)
@@ -478,53 +562,59 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
 
     # ---- 表头 ----
     headers = ["序号", "用户原文", "归属类别"]
-    detail_header_fill = make_fill(TextReportTheme.DETAIL_HEADER_BG)
-    detail_header_font = header_font(size=10)
+    h_fill = make_fill(TR.TITLE_BG)
+    h_font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
+    h_aligns = [ALIGN_CENTER, ALIGN_LEFT, ALIGN_CENTER]
     for ci, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=ci, value=h)
-        cell.fill = detail_header_fill
-        cell.font = detail_header_font
-        cell.alignment = ALIGN_CENTER
+        cell.fill = h_fill
+        cell.font = h_font
+        cell.alignment = h_aligns[ci - 1]
         cell.border = border
-    ws.row_dimensions[1].height = 35
+    ws.row_dimensions[1].height = 34
 
     # ---- AutoFilter（表头筛选箭头）----
     ws.auto_filter.ref = f"A1:C{len(details) + 1}"
 
-    # ---- 数据行 ----
+    # ---- 数据行（干净斑马纹；类别统一靛蓝，不做逐类别色块）----
     for ri, item in enumerate(details, 1):
         row_idx = ri + 1
+        text = item.get("text", "")
+        labels = item.get("labels", "")
+        zebra = make_fill(TR.ZEBRA_ALT) if ri % 2 == 0 else make_fill(TR.WHITE)
 
         # 序号
         cell = ws.cell(row=row_idx, column=1, value=ri)
-        cell.fill = even_fill() if ri % 2 == 0 else odd_fill()
-        cell.font = body_font()
+        cell.fill = zebra
+        cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
         cell.alignment = ALIGN_CENTER
         cell.border = border
 
         # 用户原文
-        cell = ws.cell(row=row_idx, column=2, value=item.get("text", ""))
-        cell.fill = even_fill() if ri % 2 == 0 else odd_fill()
-        cell.font = body_font()
+        cell = ws.cell(row=row_idx, column=2, value=text)
+        cell.fill = zebra
+        cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MAIN)
         cell.alignment = ALIGN_TOP_LEFT
         cell.border = border
 
         # 归属类别
-        cell = ws.cell(row=row_idx, column=3, value=item.get("labels", ""))
-        cell.fill = even_fill() if ri % 2 == 0 else odd_fill()
-        cell.font = body_font()
+        cell = ws.cell(row=row_idx, column=3, value=labels)
+        cell.fill = zebra
+        cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.INDIGO_CHIP)
         cell.alignment = ALIGN_CENTER
         cell.border = border
 
-        ws.row_dimensions[row_idx].height = 40
+        # 按原文长度自适应行高（列宽 82）
+        ws.row_dimensions[row_idx].height = _estimate_row_height(text, 80, min_px=34)
 
     # ---- 列宽 ----
-    ws.column_dimensions['A'].width = 8    # 序号
-    ws.column_dimensions['B'].width = 80   # 用户原文
+    ws.column_dimensions['A'].width = 7    # 序号
+    ws.column_dimensions['B'].width = 82   # 用户原文
     ws.column_dimensions['C'].width = 30   # 归属类别
 
+    ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
-    ws.sheet_properties.tabColor = "F8CBAD"
+    ws.sheet_properties.tabColor = TR.TEXT_SUB
 
     return sheet_name
 
