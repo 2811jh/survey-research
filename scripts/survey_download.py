@@ -629,12 +629,19 @@ def build_clean_conditions(questions, include_trap_indices=None):
     # ── 规则 ⑥：陷阱选项（门控追问题里的否定型互斥选项，仅按用户勾选应用）──
     trap_candidates = detect_trap_options(questions)
     if include_trap_indices:
+        # 题号归一化：_q_index 数字题号返回 int、非数字原样返回 str；
+        # _parse_traps 传入的是 int 集合。两边统一成 int（无法转则用 str）后再比对，避免类型不一致漏匹配。
+        def _norm_idx(v):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return str(v)
         if include_trap_indices == "all":
-            want = {t["index"] for t in trap_candidates}
+            want = {_norm_idx(t["index"]) for t in trap_candidates}
         else:
-            want = set(include_trap_indices)
+            want = {_norm_idx(x) for x in include_trap_indices}
         for t in trap_candidates:
-            if t["index"] in want:
+            if _norm_idx(t["index"]) in want:
                 conditions.append({
                     "and": [{"name": t["question_id"], "op": "EQ", "values": [t["option_id"]]}]
                 })
@@ -1742,6 +1749,8 @@ def main():
         _json_output(result)
 
     elif args.command == "download":
+        if args.traps and not args.clean:
+            _log("WARNING: --traps 仅在配合 --clean 时生效，本次未加 --clean，已忽略陷阱题参数。")
         result = downloader.run(
             survey_id=args.id,
             survey_name=args.name,

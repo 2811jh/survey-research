@@ -187,14 +187,16 @@ async function main() {
     const missing = plat.required.filter((n) => !(n in picked));
     if (missing.length > 0) {
       out({ status: 'no_login', browser: { id: target.id, label: target.label }, found, missing }, 6);
+    } else {
+      out({ status: 'ok', browser: { id: target.id, label: target.label }, cookies: picked, count: found.length }, 0);
     }
-    out({ status: 'ok', browser: { id: target.id, label: target.label }, cookies: picked, count: found.length }, 0);
   } catch (e) {
     // 端口活着但不是真正的 DevTools 端点（端口被占用/残留），视为"无可用浏览器"，让上层回退 Playwright
     if (e && e.code === 'not_devtools') {
       out({ status: 'empty', reason: 'stale_or_occupied_port', port: target.port }, 4);
+    } else {
+      out({ status: 'error', browser: { id: target.id, label: target.label }, message: String(e?.message || e) }, 2);
     }
-    out({ status: 'error', browser: { id: target.id, label: target.label }, message: String(e?.message || e) }, 2);
   }
 }
 

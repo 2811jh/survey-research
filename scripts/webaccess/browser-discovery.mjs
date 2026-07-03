@@ -1,6 +1,9 @@
-// 浏览器 CDP 端口发现 + 选择 —— 内嵌自 web-access skill（单一职责模块）。
+// 浏览器 CDP 端口发现 —— 内嵌自 web-access skill（单一职责模块）。
 //
-// 与原版差异：仅把 detectAll 导出，供 grab_cookie.mjs 直接使用（原版 detectAll 内部私有）。
+// 与原版差异：
+//   1. 仅把 detectAll 导出，供 grab_cookie.mjs 直接使用（原版 detectAll 内部私有）。
+//   2. 移除原版的 selectBrowser / config.env 读取逻辑：本 skill 的浏览器偏好统一存在
+//      config.json 的 web_access_browser 字段，由 Python 侧管理，Node 侧不再读 config.env。
 // 其余逻辑保持一致：通过读取各浏览器的 DevToolsActivePort 文件发现调试端口，
 // 用 TCP connect 探活（避免触发远程调试授权弹窗）。
 
@@ -8,10 +11,6 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const SKILL_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CONFIG_PATH = path.join(SKILL_ROOT, 'config.env');
 
 // 已知支持 chrome://inspect#remote-debugging toggle 的浏览器
 export function knownBrowsers() {
@@ -50,24 +49,6 @@ export function checkPort(port, host = '127.0.0.1', timeoutMs = 2000) {
     socket.once('connect', () => { clearTimeout(timer); socket.destroy(); resolve(true); });
     socket.once('error',   () => { clearTimeout(timer); resolve(false); });
   });
-}
-
-// 读 config.env（KEY=VALUE，# 注释）
-function readConfig() {
-  const cfg = {};
-  let content;
-  try { content = fs.readFileSync(CONFIG_PATH, 'utf8'); }
-  catch { return cfg; }
-  for (const line of content.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith('#')) continue;
-    const i = t.indexOf('=');
-    if (i === -1) continue;
-    const k = t.slice(0, i).trim();
-    const v = t.slice(i + 1).trim();
-    if (k && v) cfg[k] = v;
-  }
-  return cfg;
 }
 
 // 返回所有开了 toggle 且端口活的浏览器

@@ -88,15 +88,16 @@ def _channel_candidates(preferred=None):
     }
     order = []
 
-    def add(item):
-        if item not in order:
-            order.append(item)
+    def add(channel, label):
+        # 按 channel 去重（而非整个 tuple），避免 label 差异导致同一浏览器被重复尝试
+        if not any(c == channel for c, _ in order):
+            order.append((channel, label))
 
     if preferred and preferred in pref_map:
-        add(pref_map[preferred])
-    add(("chrome", "Chrome"))
-    add(("msedge", "Microsoft Edge"))
-    add((None, "Chromium(内置)"))
+        add(*pref_map[preferred])
+    add("chrome", "Chrome")
+    add("msedge", "Microsoft Edge")
+    add(None, "Chromium(内置)")
     return order
 
 
