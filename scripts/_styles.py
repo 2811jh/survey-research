@@ -512,31 +512,31 @@ def write_structured_report(ws, report_data, percent_df=None, col_labels=None):
 # ========================================================================= #
 
 class TextReportTheme:
-    """文本分析报告配色（深墨骨架 + 冷靛主色 + 暖琥珀点缀的冷暖对比系统）"""
-    # 结构色（比参考更深一档，更高级）
-    TITLE_BG = "0F172A"        # slate-900 大标题 / 明细表头（墨蓝）
-    SUBTITLE_BG = "1E293B"     # slate-800 题目条 / 概览表头
-    ZEBRA_ALT = "F1F5F9"       # slate-100 斑马纹间隔行
+    """文本分析报告配色（藏青 Navy + 柔珊瑚桃 Peach 双色系统，低饱和 / 大留白 / 浅色块，参考服务蓝图风格）"""
+    # 结构色（藏青骨架）
+    TITLE_BG = "20385C"        # 深藏青  大标题 / 明细表头
+    SUBTITLE_BG = "3E5C86"     # 中藏青  题目条 / 概览表头 / 说明标题
+    ZEBRA_ALT = "F4F8FC"       # 极浅蓝  斑马纹间隔行
     WHITE = "FFFFFF"
     # 文本色
-    TEXT_MAIN = "0F172A"       # slate-900 主文本
-    TEXT_SUB = "475569"        # slate-600 次要文本（原文）
-    TEXT_MUTE = "94A3B8"       # slate-400 弱化文本（序号 / 其他类别）
-    # 冷靛主色（结论 / 类别）
-    INDIGO_BG = "EEF2FF"       # indigo-50 结论底
-    INDIGO_ACCENT_BG = "E0E7FF"  # indigo-100 序号列底
-    INDIGO_DEEP = "312E81"     # indigo-900 结论字
-    INDIGO_MAIN = "4338CA"     # indigo-700 序号字 / 占比字
-    INDIGO_CHIP = "4F46E5"     # indigo-600 明细类别字
-    NOTE_BG = "F8FAFC"         # slate-50 方法说明底
-    # 暖琥珀点缀（冷暖对比：占比条形 / Top 排名徽章 / 强调竖条）
-    AMBER_BAR = "F59E0B"       # amber-500 占比 DataBar
-    RANK1_BG = "B45309"        # amber-700  第 1 名徽章底
-    RANK2_BG = "D97706"        # amber-600  第 2 名徽章底
-    RANK3_BG = "F59E0B"        # amber-500  第 3 名徽章底
+    TEXT_MAIN = "2C3E56"       # 深蓝灰  主文本
+    TEXT_SUB = "5B6B7F"        # 中蓝灰  次要文本（原文）
+    TEXT_MUTE = "9AA7B5"       # 浅蓝灰  弱化文本（其他类别）
+    # 冷调蓝（结论 / 序号常规 / 类别）
+    INDIGO_BG = "EAF1F8"       # 浅蓝    结论底 / 明细类别底
+    INDIGO_ACCENT_BG = "DCE7F3"  # 淡蓝  序号常规底
+    INDIGO_DEEP = "20385C"     # 藏青    结论字
+    INDIGO_MAIN = "3E5C86"     # 中藏青  序号字 / 占比字
+    INDIGO_CHIP = "3E5C86"     # 中藏青  明细类别字
+    NOTE_BG = "F8FAFC"         # 近白    方法说明底
+    # 暖调珊瑚桃点缀（低饱和，冷暖对比）
+    AMBER_BAR = "D98B5F"       # 柔珊瑚  占比 DataBar
+    RANK1_BG = "C9743F"        # 深珊瑚  第 1 名徽章底
+    RANK2_BG = "D98B5F"        # 中珊瑚  第 2 名徽章底
+    RANK3_BG = "E5A67D"        # 浅珊瑚  第 3 名徽章底
     RANK_FONT = "FFFFFF"       # 徽章字（白）
-    ACCENT_BAR = "6366F1"      # indigo-500 结论块左侧强调竖条 / 装饰分隔
-    HAIRLINE = "CBD5E1"        # slate-300 细分隔线
+    ACCENT_BAR = "D98B5F"      # 柔珊瑚  结论块左侧强调竖条
+    HAIRLINE = "CBD5E1"        # 浅灰蓝  细分隔线
 
     # ---- 兼容旧引用（其余脚本 / 历史代码可能仍读取）----
     CONCLUSION_BG = "EEF2FF"
