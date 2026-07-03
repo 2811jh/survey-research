@@ -98,10 +98,12 @@ C:\Users\xxx\Desktop\MC调研_90502\
 **执行步骤**：
 
 1. **确定平台**：
-   支持国内（`cn`，survey-game.163.com）和国外（`intl`，survey-game.easebar.com）。
+   支持国内（`cn`，survey-game.163.com）和海外（`global`，survey-game.easebar.com）。
    - 用户提到"国内"、"163" → `--platform cn`
-   - 用户提到"国外"、"intl"、"easebar" → `--platform intl`
-   - 未说明 → 用 `ask_user_question` 让用户选择
+   - 用户提到"国外"、"海外"、"global"、"easebar" → `--platform global`
+   - 未说明 → 用 `ask_user_question` 让用户选择。**每个选项必须带上对应平台链接**，方便用户核对：
+     - `国内问卷平台（https://survey-game.163.com）` → `--platform cn`
+     - `海外问卷平台（https://survey-game.easebar.com）` → `--platform global`
 
 2. **读取下载参考文档并执行**：
    根据用户意图读取对应的 reference 文档：
