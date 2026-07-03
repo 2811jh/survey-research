@@ -49,7 +49,7 @@ from _styles import (
     ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT, ALIGN_TOP_LEFT,
 )
 from text_extract import clean_column_texts
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import DataBarRule
 
@@ -366,14 +366,14 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
 
     row = 1
 
-    # ---- 第1行：大标题 ----
+    # ---- 第1行：大标题（含副标） ----
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
-    cell = ws.cell(row=row, column=1, value="  文本分析报告")
+    cell = ws.cell(row=row, column=1, value="  文本分析报告   ·   开放题主题归纳")
     cell.fill = make_fill(TR.TITLE_BG)
     cell.font = Font(name=Theme.FONT_NAME, size=18, bold=True, color=TR.WHITE)
     cell.alignment = ALIGN_LEFT
     cell.border = border
-    ws.row_dimensions[row].height = 48
+    ws.row_dimensions[row].height = 50
     for c in range(2, total_width + 1):
         ws.cell(row=row, column=c).border = border
     row += 1
@@ -390,15 +390,21 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
         ws.cell(row=row, column=c).border = border
     row += 1
 
-    # ---- 第3行：核心结论 ----
+    # ---- 第3行：核心结论（左侧靛蓝强调竖条 + 冷靛底）----
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
     conclusion_clean = conclusion.replace("%%", "%") if conclusion else ""
     conclusion_display = f"  核心结论    {conclusion_clean}" if conclusion_clean else ""
+    accent_left_border = Border(
+        left=Side(style='thick', color=TR.ACCENT_BAR),
+        top=Side(style='thin', color=TR.HAIRLINE),
+        bottom=Side(style='thin', color=TR.HAIRLINE),
+        right=Side(style='thin', color=TR.HAIRLINE),
+    )
     cell = ws.cell(row=row, column=1, value=conclusion_display)
     cell.fill = make_fill(TR.INDIGO_BG)
     cell.font = Font(name=Theme.FONT_NAME, size=11, bold=False, color=TR.INDIGO_DEEP)
     cell.alignment = ALIGN_TOP_LEFT
-    cell.border = border
+    cell.border = accent_left_border
     ws.row_dimensions[row].height = _estimate_row_height(conclusion_display, 126, line_px=18, min_px=64)
     for c in range(2, total_width + 1):
         ws.cell(row=row, column=c).border = border
@@ -424,9 +430,14 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
         ws.row_dimensions[row].height = 30
         row += 1
 
-        # 数据行（干净斑马纹 + 靛蓝序号列 + 占比 DataBar）
+        # 按条数计算排名，Top3 用暖琥珀渐强徽章（冷暖对比）
+        _non_other = [d for d in dimensions if d.get("name", "") != OTHER_CANON]
+        _ranked = sorted(_non_other, key=lambda d: -d.get("count", 0))
+        rank_of = {id(d): i + 1 for i, d in enumerate(_ranked)}
+        rank_bg = {1: TR.RANK1_BG, 2: TR.RANK2_BG, 3: TR.RANK3_BG}
+
+        # 数据行（干净斑马纹 + 排名徽章序号列 + 暖琥珀占比条）
         first_data_row = row
-        acc_fill = make_fill(TR.INDIGO_ACCENT_BG)
         for di, dim in enumerate(dimensions, 1):
             examples = dim.get("examples", [])
             example_text = "\n".join(f"·  {ex}" for ex in examples)
@@ -438,10 +449,20 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
             name_color = TR.TEXT_MUTE if is_other else TR.TEXT_MAIN
             pct_color = TR.TEXT_MUTE if is_other else TR.INDIGO_MAIN
 
-            # 序号（靛蓝强调列）
+            # 序号（Top3 暖色徽章，其余淡靛，其他类别弱化）
+            rk = rank_of.get(id(dim))
+            if is_other:
+                idx_fill = make_fill(TR.ZEBRA_ALT)
+                idx_font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.TEXT_MUTE)
+            elif rk in rank_bg:
+                idx_fill = make_fill(rank_bg[rk])
+                idx_font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.RANK_FONT)
+            else:
+                idx_fill = make_fill(TR.INDIGO_ACCENT_BG)
+                idx_font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.INDIGO_MAIN)
             cell = ws.cell(row=row, column=1, value=di)
-            cell.fill = acc_fill
-            cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.INDIGO_MAIN)
+            cell.fill = idx_fill
+            cell.font = idx_font
             cell.alignment = ALIGN_CENTER
             cell.border = border
 
@@ -477,12 +498,12 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
             ws.row_dimensions[row].height = _estimate_row_height(example_text, 68, line_px=17, min_px=56)
             row += 1
 
-        # 占比列 DataBar（靛蓝条形）
+        # 占比列 DataBar（暖琥珀条形，与冷靛文字形成对比）
         if row > first_data_row:
             rule = DataBarRule(
                 start_type='num', start_value=0,
                 end_type='max',
-                color=TR.INDIGO_CHIP,
+                color=TR.AMBER_BAR,
                 showValue=True, minLength=0, maxLength=100,
             )
             ws.conditional_formatting.add(f"D{first_data_row}:D{row - 1}", rule)
@@ -597,10 +618,12 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
         cell.alignment = ALIGN_TOP_LEFT
         cell.border = border
 
-        # 归属类别
+        # 归属类别（淡靛"标签条"列，与原文区分层次）
+        is_other = _canon_label((_split_labels(labels) or [""])[0]) == OTHER_CANON
         cell = ws.cell(row=row_idx, column=3, value=labels)
-        cell.fill = zebra
-        cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.INDIGO_CHIP)
+        cell.fill = zebra if is_other else make_fill(TR.INDIGO_BG)
+        cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True,
+                         color=(TR.TEXT_MUTE if is_other else TR.INDIGO_CHIP))
         cell.alignment = ALIGN_CENTER
         cell.border = border
 
