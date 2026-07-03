@@ -49,7 +49,9 @@ function parseArgs(argv) {
   return a;
 }
 
-// 无 wsPath 时（如手动指定端口），从 /json/version 拿 browser 级 webSocketDebuggerUrl
+// 无 wsPath 时（如手动指定端口），从 /json/version 拿 browser 级 webSocketDebuggerUrl。
+// 注意：部分 Edge/Chrome 版本会屏蔽 /json/* HTTP 端点（返回空/404），但 WebSocket 端点仍可用，
+// 因此这里返回 null 不代表浏览器不可用，仅作为 wsPath 缺失时的补充来源。
 function fetchBrowserWsUrl(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/json/version', timeout: 3000 }, (res) => {
@@ -63,6 +65,40 @@ function fetchBrowserWsUrl(port) {
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
+}
+
+// 候选 ws 地址：优先 DevToolsActivePort 里的 wsPath（浏览器启动时实时写入，最权威），
+// 其次 /json/version（HTTP 端点被屏蔽时为空）。
+async function candidateWsUrls(browser) {
+  const urls = [];
+  if (browser.wsPath) urls.push(`ws://127.0.0.1:${browser.port}${browser.wsPath}`);
+  const v = await fetchBrowserWsUrl(browser.port);
+  if (v && !urls.includes(v)) urls.push(v);
+  return urls;
+}
+
+// 存活探测：WebSocket 升级成功即为真正的 DevTools 端点（占用端口的普通 HTTP 服务无法完成 ws 升级）。
+function probeWs(wsUrl, timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let ws;
+    const done = (ok) => { if (!settled) { settled = true; try { ws.close(); } catch {} resolve(ok); } };
+    try { ws = new WebSocket(wsUrl); } catch { return resolve(false); }
+    const t = setTimeout(() => done(false), timeoutMs);
+    ws.onopen = () => { clearTimeout(t); done(true); };
+    ws.onerror = () => { clearTimeout(t); done(false); };
+  });
+}
+
+// 返回该浏览器第一个探测存活的 ws 地址；都不通返回 null。
+// 首轮全部失败时重试一轮（ws 升级偶发瞬时失败，重试可显著降低误判为不可用的概率）。
+async function resolveLiveWs(browser) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const url of await candidateWsUrls(browser)) {
+      if (await probeWs(url)) return url;
+    }
+  }
+  return null;
 }
 
 // 连接 CDP browser 端点，调用 Storage.getCookies，返回 cookie 数组
@@ -87,10 +123,8 @@ function getAllCookies(wsUrl, timeoutMs = 10000) {
 }
 
 async function grabFrom(browser, plat) {
-  // 优先用 main() 校验阶段缓存的实时 ws 地址；缺失时再探测一次。
-  // /json/version 是权威存活探测：拿不到 webSocketDebuggerUrl 即非真正 DevTools 端点
-  // （DevToolsActivePort 里的 wsPath 可能残留 / 端口被其他进程占用，连它只会挂起超时）。
-  const wsUrl = browser.wsUrl || await fetchBrowserWsUrl(browser.port);
+  // 使用 main() 校验阶段已探测存活的 ws 地址；缺失时再解析一次。
+  const wsUrl = browser.wsUrl || await resolveLiveWs(browser);
   if (!wsUrl) {
     const err = new Error('not_devtools_endpoint');
     err.code = 'not_devtools';
@@ -120,11 +154,11 @@ async function main() {
   if (!plat) out({ status: 'error', message: `unknown platform: ${args.platform}` }, 2);
 
   // detectAll 仅做 DevToolsActivePort 文件 + TCP 探测，可能假阳性（端口被别的进程占用）。
-  // 这里再用 /json/version 逐个校验，只保留真正说 DevTools 协议的端点，并缓存实时 ws 地址。
+  // 这里再用 WebSocket 升级逐个校验存活，只保留真正说 DevTools 协议的端点，并缓存存活的 ws 地址。
   const candidates = await detectAll();
   const detected = [];
   for (const b of candidates) {
-    const wsUrl = await fetchBrowserWsUrl(b.port);
+    const wsUrl = await resolveLiveWs(b);
     if (wsUrl) detected.push({ ...b, wsUrl });
   }
 
@@ -139,7 +173,7 @@ async function main() {
     if (!target) out({ status: 'mismatch', requested: args.browser, detected: detected.map((b) => b.id) }, 3);
   } else if (detected.length === 0) {
     const fp = await findFallbackPort();
-    const wsUrl = fp ? await fetchBrowserWsUrl(fp) : null;
+    const wsUrl = fp ? await resolveLiveWs({ port: fp, wsPath: null }) : null;
     if (wsUrl) target = { id: 'fallback', label: `port ${fp}`, port: fp, wsUrl };
     else out({ status: 'empty' }, 4);
   } else if (detected.length === 1) {
