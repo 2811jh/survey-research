@@ -846,10 +846,15 @@ class SurveyDownloader:
 
         import subprocess
         python_exe = sys.executable
-        _log(f"Running refresh_cookie.py (platform={self.platform})...")
+        cmd = [python_exe, refresh_script, "--timeout", "300", "--platform", self.platform or DEFAULT_PLATFORM]
+        # 复用已保存的浏览器偏好（CDP 抓取时记录的日常浏览器），让 Playwright 也优先用同一款
+        pref = self._get_browser_pref()
+        if pref:
+            cmd += ["--browser", pref]
+        _log(f"Running refresh_cookie.py (platform={self.platform}, browser={pref or 'auto'})...")
         try:
             result = subprocess.run(
-                [python_exe, refresh_script, "--timeout", "300", "--platform", self.platform or DEFAULT_PLATFORM],
+                cmd,
                 capture_output=False,
                 timeout=310,
             )

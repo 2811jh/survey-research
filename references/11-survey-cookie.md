@@ -28,7 +28,9 @@ cookie（含 HttpOnly 的 `JSESSIONID`/`SURVEY_TOKEN`）。
 CDP 不可用（无 Node / 未开远程调试 / 未登录 / 多浏览器无偏好 / 任何异常）时，
 **静默回退**到原有 `refresh_cookie.py` 流程：
 
-1. **自动调用** `refresh_cookie.py`，弹出浏览器窗口（使用持久化 profile，存放于 `scripts/.browser_profile/`）
+1. **自动调用** `refresh_cookie.py`，弹出浏览器窗口（使用持久化 profile，存放于 `scripts/.browser_profile/`）。
+   **多浏览器兼容**：不写死 Edge，按 `已保存偏好 → Chrome → Edge → Playwright 内置 Chromium` 顺序自动挑第一个装了的，
+   用第一个可用的启动（Mac 没装 Edge 也能用 Chrome / 内置 Chromium）。若之前用 `cookie-cdp --save-pref` 存过偏好，会优先用同一款。
 2. 如果**首次使用**：浏览器显示登录页，用户输入账号密码完成登录（仅需一次）
 3. 如果**之前已登录过**：浏览器进入网易 SSO「确认登录」页（显示已记住的账号）。**脚本自动点击"确认登录"按钮**，无需用户手动操作
 4. 检测到目标 cookies 后，等待 SSO 重定向链上的所有 cookies 落盘（约 2 秒），保存后自动关闭浏览器
@@ -93,6 +95,8 @@ playwright install chromium
 ```bash
 python {SKILL_DIR}/scripts/refresh_cookie.py --platform cn
 python {SKILL_DIR}/scripts/refresh_cookie.py --platform global
+# 指定浏览器（可选）：chrome / edge / chromium；缺省自动挑第一个装了的
+python {SKILL_DIR}/scripts/refresh_cookie.py --platform cn --browser chrome
 ```
 
 ## 故障排查

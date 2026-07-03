@@ -3,7 +3,8 @@
 """
 自动刷新网易问卷系统 Cookie（认证体系对齐 survey-checker）
 
-使用 Playwright + Edge 打开浏览器，通过检测 required_cookies 判断登录状态。
+使用 Playwright 打开浏览器（多浏览器：按 Chrome→Edge→内置 Chromium 自动挑可用的，
+也可用 --browser 指定），通过检测 required_cookies 判断登录状态。
 - 首次运行：需要手动登录（登录后自动保存 session）
 - 后续运行：复用 .browser_profile 保留的 session，自动获取新 Cookie（无需重新登录）
 
@@ -68,7 +69,64 @@ def save_cookies(platform, cookie_dict):
     _log(f"Cookies saved to {cfg}")
 
 
-def refresh_cookie(platform="cn", timeout=300):
+def _channel_candidates(preferred=None):
+    """
+    构造 Playwright 启动通道候选（有序，去重）。
+    channel=None 表示用 Playwright 自带的 chromium（需 `playwright install chromium`）。
+
+    preferred: 浏览器偏好 id（chrome/edge/msedge/chromium），来自 CDP 抓取时保存的
+    web_access_browser，或命令行 --browser。优先尝试。
+
+    不写死单一浏览器：按「偏好 → Chrome → Edge → 自带 Chromium」顺序逐个尝试启动，
+    用第一个装了的。这样 Mac 没装 Edge 也能用 Chrome / 自带 Chromium，行为对齐 web-access 的多浏览器。
+    """
+    pref_map = {
+        "chrome": ("chrome", "Chrome"),
+        "edge": ("msedge", "Microsoft Edge"),
+        "msedge": ("msedge", "Microsoft Edge"),
+        "chromium": (None, "Chromium(内置)"),
+    }
+    order = []
+
+    def add(item):
+        if item not in order:
+            order.append(item)
+
+    if preferred and preferred in pref_map:
+        add(pref_map[preferred])
+    add(("chrome", "Chrome"))
+    add(("msedge", "Microsoft Edge"))
+    add((None, "Chromium(内置)"))
+    return order
+
+
+def _launch_any_browser(p, profile_dir_path, preferred=None):
+    """
+    依次尝试候选浏览器通道，返回 (context, label)；全部失败返回 (None, None)。
+    仅当某通道对应的浏览器未安装（Executable doesn't exist 等）时才跳到下一个。
+    """
+    last_err = None
+    for channel, label in _channel_candidates(preferred):
+        try:
+            kwargs = dict(
+                user_data_dir=profile_dir_path,
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            if channel:
+                kwargs["channel"] = channel
+            context = p.chromium.launch_persistent_context(**kwargs)
+            _log(f"Launched browser: {label}" + (f" (channel={channel})" if channel else " (bundled chromium)"))
+            return context, label
+        except Exception as e:
+            last_err = e
+            _log(f"  {label} 不可用，尝试下一个：{str(e).splitlines()[0]}")
+    _log(f"ERROR: 没有可用的浏览器（已尝试 Chrome/Edge/内置 Chromium）。最后错误：{last_err}")
+    _log("  可安装其一：Chrome 或 Edge；或执行 `playwright install chromium` 使用内置浏览器。")
+    return None, None
+
+
+def refresh_cookie(platform="cn", timeout=300, preferred_browser=None):
     """
     用 Playwright 打开浏览器，等待登录后自动保存 Cookie。
     登录检测策略：检测 required_cookies 是否存在（对齐 survey-checker/core/auth.py）。
@@ -105,12 +163,9 @@ def refresh_cookie(platform="cn", timeout=300):
     context = None
     try:
         with sync_playwright() as p:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=profile_dir_path,
-                channel="msedge",
-                headless=False,
-                args=["--disable-blink-features=AutomationControlled"],
-            )
+            context, _ = _launch_any_browser(p, profile_dir_path, preferred=preferred_browser)
+            if context is None:
+                return False
             page = context.pages[0] if context.pages else context.new_page()
             _log(f"Navigating to {survey_url}")
             page.goto(survey_url, wait_until="domcontentloaded")
@@ -182,9 +237,13 @@ def main():
         "--platform", choices=["cn", "global"], default="cn",
         help="平台: cn=国内(163.com), global=国外(easebar.com)（默认 cn）",
     )
+    parser.add_argument(
+        "--browser", default=None,
+        help="优先使用的浏览器: chrome/edge/chromium（缺省则按 Chrome→Edge→内置 Chromium 顺序自动挑可用的）",
+    )
     args = parser.parse_args()
 
-    success = refresh_cookie(platform=args.platform, timeout=args.timeout)
+    success = refresh_cookie(platform=args.platform, timeout=args.timeout, preferred_browser=args.browser)
     if success:
         _log("✓ Cookie refresh completed!")
         print(json.dumps({"status": "success", "message": "Cookie 已自动刷新"}, ensure_ascii=False))
