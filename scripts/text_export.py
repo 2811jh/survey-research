@@ -48,7 +48,7 @@ from _styles import (
     body_font, even_fill, odd_fill, make_fill,
     ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT, ALIGN_TOP_LEFT,
 )
-from text_extract import clean_column_texts
+from text_extract import clean_column_texts, _clean_text
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import DataBarRule
@@ -269,48 +269,70 @@ def _rebuild_dimensions_from_details(details: list, ai_dimensions: list) -> list
                 seen_order.append(canon)
             counts[canon] += 1
             txt = (d.get("text") or "").strip()
-            if txt and len(ex_by[canon]) < 3:
+            if txt and len(ex_by[canon]) < 5:
                 ex_by[canon].append(txt)
 
     ai_examples = {}
-    ai_names = []
     for dim in ai_dimensions or []:
         nm = dim.get("name", "")
         if _canon_label(nm) == OTHER_CANON:
             continue
-        ai_names.append(nm)
         ai_examples[nm] = dim.get("examples", []) or []
 
-    final_order = []
-    for nm in ai_names:
-        if nm in counts and nm not in final_order:
-            final_order.append(nm)
-    for nm in seen_order:
-        if nm != OTHER_CANON and nm not in final_order:
-            final_order.append(nm)
-    if OTHER_CANON in counts:
-        final_order.append(OTHER_CANON)
+    # 排序：非「其他」按条数降序（同数按名称稳定），「其他/未归类」固定最后一行
+    non_other = [nm for nm in counts if nm != OTHER_CANON]
+    non_other.sort(key=lambda nm: (-counts[nm], nm))
+    final_order = non_other + ([OTHER_CANON] if OTHER_CANON in counts else [])
 
     dims = []
     for nm in final_order:
         c = counts.get(nm, 0)
         pct = f"{c / total * 100:.1f}%" if total > 0 else "0%"
-        examples = ai_examples.get(nm) or ex_by.get(nm, [])
+        # 典型原文：优先 AI 精选，再用真实命中的原文补足到 5 条
+        examples = []
+        for e in ai_examples.get(nm, []):
+            if e and e not in examples:
+                examples.append(e)
+            if len(examples) >= 5:
+                break
+        for e in ex_by.get(nm, []):
+            if len(examples) >= 5:
+                break
+            if e and e not in examples:
+                examples.append(e)
         dims.append({"name": nm, "count": c, "percentage": pct, "examples": examples})
     return dims
 
 
+_CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+
+
 def _augment_conclusion(conclusion: str, dims: list, total: int) -> str:
-    """在结论末尾追加脚本自动计算的数据佐证行（数字由脚本回填，杜绝手写幻觉）。"""
+    """
+    组织「结论先行 + 分点描述」的可视化结论文本（数字由脚本回填，杜绝手写幻觉）。
+
+    结构：
+      核心结论：<AI 总述一句话>
+      （分点按占比降序，总样本 N=…）
+      ① 维度A  占比（条数）
+      ② 维度B  占比（条数）
+      …
+      ⊕ 其他/未归类  占比（条数）  ← 固定最后
+    """
     non_other = [d for d in dims if d["name"] != OTHER_CANON]
-    top = sorted(non_other, key=lambda d: -d.get("count", 0))[:4]
-    parts = [f"{d['name']} {d['percentage']}（{d['count']}条）" for d in top]
     other = next((d for d in dims if d["name"] == OTHER_CANON), None)
-    stat = f"【数据佐证（脚本自动计算，N={total}）】" + "；".join(parts)
+
+    lines = []
+    lead = (conclusion or "").strip()
+    if lead:
+        lines.append(lead)
+    lines.append(f"—— 分点明细（按占比降序，总样本 N={total} 条有效反馈）——")
+    for i, d in enumerate(non_other):
+        mark = _CIRCLED[i] if i < len(_CIRCLED) else f"({i + 1})"
+        lines.append(f"{mark} {d['name']}  {d['percentage']}（{d['count']}条）")
     if other:
-        stat += f"；{OTHER_CANON} {other['percentage']}（{other['count']}条）"
-    base = (conclusion or "").strip()
-    return (base + "\n" + stat) if base else stat
+        lines.append(f"⊕ {OTHER_CANON}  {other['percentage']}（{other['count']}条）")
+    return "\n".join(lines)
 
 
 # ---- 可视化辅助（自适应行高 / 占比数值解析） ----
@@ -340,6 +362,81 @@ def _pct_to_float(pct):
         return 0.0
 
 
+# ---- 逐条明细附加字段（从原始问卷数据回填 uid / 引擎版本 / 满意度等）----
+
+def _resolve_column(df, token):
+    """把用户给的列 token 解析为原始数据里的真实列名（精确 → 互相包含 → 忽略大小写包含）。"""
+    if token in df.columns:
+        return token
+    for c in df.columns:
+        cs = str(c)
+        if token in cs or cs in token:
+            return c
+    tl = str(token).lower()
+    for c in df.columns:
+        if tl in str(c).lower():
+            return c
+    return None
+
+
+def _auto_attach_header(col: str) -> str:
+    """为附加列自动取一个简洁中文表头。"""
+    cl = str(col).lower()
+    if "uid" in cl:
+        return "用户UID"
+    if "engine" in cl or "引擎" in col:
+        return "引擎版本"
+    if "整体满意度" in col:
+        return "整体满意度"
+    base = re.sub(r'^[QYqy]\d+\.', '', str(col))
+    base = re.split(r'[*:：\[]', base)[0].strip()
+    return base[:14] or str(col)
+
+
+def _attach_meta_columns(details, source_df, question_col, attach_columns, attach_headers=None):
+    """
+    为每条 detail 从原始数据回填附加字段（uid / 引擎版本 / 满意度等）。
+
+    按「文本题原文」把逐条明细关联回原始行；同一原文出现多次时按出现顺序依次取值。
+    返回附加列的表头列表；每条 detail 写入 detail["_meta"] = {表头: 值}。
+    """
+    from collections import defaultdict, deque
+
+    text_col = _resolve_column(source_df, question_col)
+    resolved = []
+    for i, tok in enumerate(attach_columns or []):
+        col = _resolve_column(source_df, tok)
+        if col is None:
+            continue
+        if attach_headers and i < len(attach_headers) and attach_headers[i]:
+            hdr = attach_headers[i]
+        else:
+            hdr = _auto_attach_header(col)
+        resolved.append((col, hdr))
+
+    if not resolved or text_col is None:
+        return []
+
+    lookup = defaultdict(deque)
+    for _, r in source_df.iterrows():
+        raw = r.get(text_col)
+        if pd.isna(raw):
+            continue
+        key = _clean_text(str(raw))
+        vals = {}
+        for col, hdr in resolved:
+            v = r.get(col)
+            vals[hdr] = "" if pd.isna(v) else str(v)
+        lookup[key].append(vals)
+
+    headers = [hdr for _, hdr in resolved]
+    for d in details:
+        key = _clean_text(str(d.get("text", "")))
+        picked = lookup[key].popleft() if lookup.get(key) else {}
+        d["_meta"] = {h: picked.get(h, "") for h in headers}
+    return headers
+
+
 def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
     """
     写入单题的总结概览 sheet（纯 openpyxl 手写竖排布局）。
@@ -355,6 +452,7 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
     question = question_data.get("question", f"题目{sheet_idx}")
     conclusion = question_data.get("conclusion", "")
     dimensions = question_data.get("dimensions", [])
+    total_n = len(question_data.get("details", []))
 
     TR = TextReportTheme
     sheet_name = "总结概览"
@@ -378,9 +476,9 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
         ws.cell(row=row, column=c).border = border
     row += 1
 
-    # ---- 第2行：题目 ----
+    # ---- 第2行：题目（右端标注总样本量） ----
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
-    cell = ws.cell(row=row, column=1, value=f"  题目  ·  {question}")
+    cell = ws.cell(row=row, column=1, value=f"  题目  ·  {question}     ｜     总样本量 N = {total_n} 条有效反馈")
     cell.fill = make_fill(TR.SUBTITLE_BG)
     cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.WHITE)
     cell.alignment = ALIGN_LEFT
@@ -532,7 +630,7 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
             "· 多标签：一条反馈可同时命中多个维度，故各维度占比之和可能 > 100%（占比 = 该维度条数 ÷ N）。",
             "· 数据一致性：上表「反馈条数 / 占比」均由脚本从「逐条明细」页实时反算，两页数据完全一致，可逐条核对。",
             "· 「其他/未归类」：无实质建议（如“很好”“没有”）或无法归入上述主题的反馈；占比越低说明主题覆盖越充分。",
-            "· 典型用户原文：从真实命中该维度的反馈中选取，均可在「逐条明细」页检索验证。",
+            "· 典型用户原文：每个维度默认展示最多 5 条真实命中的反馈，均可在「逐条明细」页检索验证。",
         ]
         note_text = "\n".join(note_lines)
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_width)
@@ -564,10 +662,12 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
     """
     写入单题的逐条明细 sheet（纯 openpyxl 手写，含序号列）。
 
-    表头：序号 | 用户原文 | 归属类别
+    表头：序号 | 用户原文 | 归属类别 [ | 附加字段... ]
+    附加字段来自 question_data["_meta_headers"]，每条 detail 的 item["_meta"]。
     """
     question = question_data.get("question", f"题目{sheet_idx}")
     details = question_data.get("details", [])
+    meta_headers = question_data.get("_meta_headers", []) or []
 
     TR = TextReportTheme
     sheet_name = "逐条明细"
@@ -581,27 +681,31 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
     ws = writer.book.create_sheet(sheet_name)
     border = thin_border()
 
-    # ---- 表头 ----
-    headers = ["序号", "用户原文", "归属类别"]
+    # ---- 表头（基础 3 列 + 附加字段列）----
+    headers = ["序号", "用户原文", "归属类别"] + list(meta_headers)
     h_fill = make_fill(TR.TITLE_BG)
     h_font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
-    h_aligns = [ALIGN_CENTER, ALIGN_LEFT, ALIGN_CENTER]
     for ci, h in enumerate(headers, 1):
+        align = ALIGN_LEFT if ci == 2 else ALIGN_CENTER
         cell = ws.cell(row=1, column=ci, value=h)
         cell.fill = h_fill
         cell.font = h_font
-        cell.alignment = h_aligns[ci - 1]
+        cell.alignment = align
         cell.border = border
     ws.row_dimensions[1].height = 34
+    last_col = get_column_letter(len(headers))
 
     # ---- AutoFilter（表头筛选箭头）----
-    ws.auto_filter.ref = f"A1:C{len(details) + 1}"
+    ws.auto_filter.ref = f"A1:{last_col}{len(details) + 1}"
 
-    # ---- 数据行（干净斑马纹；类别统一靛蓝，不做逐类别色块）----
+    meta_start_col = 4  # D 起为附加字段
+
+    # ---- 数据行（干净斑马纹；类别淡靛标签条）----
     for ri, item in enumerate(details, 1):
         row_idx = ri + 1
         text = item.get("text", "")
         labels = item.get("labels", "")
+        meta = item.get("_meta", {}) or {}
         zebra = make_fill(TR.ZEBRA_ALT) if ri % 2 == 0 else make_fill(TR.WHITE)
 
         # 序号
@@ -627,15 +731,32 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
         cell.alignment = ALIGN_CENTER
         cell.border = border
 
-        # 按原文长度自适应行高（列宽 82）
+        # 附加字段列（uid / 引擎版本 / 满意度等）
+        for mi, h in enumerate(meta_headers):
+            cell = ws.cell(row=row_idx, column=meta_start_col + mi, value=meta.get(h, ""))
+            cell.fill = zebra
+            cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_SUB)
+            cell.alignment = ALIGN_CENTER
+            cell.border = border
+
+        # 按原文长度自适应行高
         ws.row_dimensions[row_idx].height = _estimate_row_height(text, 80, min_px=34)
 
     # ---- 列宽 ----
     ws.column_dimensions['A'].width = 7    # 序号
-    ws.column_dimensions['B'].width = 82   # 用户原文
+    ws.column_dimensions['B'].width = 78   # 用户原文
     ws.column_dimensions['C'].width = 30   # 归属类别
+    for mi, h in enumerate(meta_headers):
+        col_letter = get_column_letter(meta_start_col + mi)
+        if "UID" in h.upper() or "ID" in h.upper():
+            w = 26
+        elif "版本" in h or "engine" in h.lower():
+            w = 16
+        else:
+            w = 20
+        ws.column_dimensions[col_letter].width = w
 
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "B2"  # 冻结首行 + 序号列，横向滚动看附加字段时序号仍可见
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = TR.TEXT_SUB
 
@@ -648,7 +769,8 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
 
 def export_text_report(results: list, output_path: str,
                        file_path: str = None, sheet_name=0,
-                       sample_n: int = 300) -> dict:
+                       sample_n: int = 300,
+                       attach_columns: list = None, attach_headers: list = None) -> dict:
     """
     将文本分析结果导出为专业 Excel 报告。
 
@@ -664,9 +786,11 @@ def export_text_report(results: list, output_path: str,
     Args:
         results: 分析结果列表
         output_path: 输出文件路径
-        file_path: 原始数据文件路径（仅全量兜底模式用于关键词自动标注）
+        file_path: 原始数据文件路径（全量兜底关键词标注 + 逐条明细附加字段回填）
         sheet_name: 工作表名或编号（默认 0）
         sample_n: 明细行数限制（默认 300，0=全量关键词兜底）
+        attach_columns: 需要回填到「逐条明细」的原始列 token 列表（如 uid / 引擎版本 / 满意度）
+        attach_headers: 与 attach_columns 一一对应的中文表头（可选，缺省自动命名）
 
     Returns:
         {"status": "success", "output_path": str, "sheets": [str]}
@@ -687,7 +811,7 @@ def export_text_report(results: list, output_path: str,
         try:
             ext = file_path.rsplit('.', 1)[-1].lower()
             if ext == 'csv':
-                source_df = pd.read_csv(file_path, encoding=_detect_csv_encoding(file_path))
+                source_df = pd.read_csv(file_path, encoding=_detect_csv_encoding(file_path), low_memory=False)
             else:
                 source_df = pd.read_excel(file_path, sheet_name=sheet_name)
             source_df.columns = [str(c).strip() for c in source_df.columns]
@@ -765,6 +889,18 @@ def export_text_report(results: list, output_path: str,
                             f"[{question_col}] 未归类占比 {ratio * 100:.1f}%（>20%），"
                             "建议补充维度或重新逐条编码以提升准确度。")
 
+            # ---- 逐条明细附加字段：从原始数据回填 uid / 引擎版本 / 满意度等 ----
+            if details and attach_columns and source_df is not None:
+                try:
+                    mh = _attach_meta_columns(details, source_df, question_col,
+                                              attach_columns, attach_headers)
+                    question_data["_meta_headers"] = mh
+                    if not mh:
+                        warnings.append(
+                            f"[{question_col}] 附加字段回填失败：未能在原始数据中解析到指定列或文本列。")
+                except Exception as e:
+                    warnings.append(f"[{question_col}] 附加字段回填异常：{e}")
+
             # 总结概览
             summary_name = _write_summary_sheet(writer, question_data, idx)
             sheets_created.append(summary_name)
@@ -802,6 +938,10 @@ def main():
     parser.add_argument("--sheet_name", default="0", help="工作表名或编号（默认 0）")
     parser.add_argument("--sample_n", type=int, default=300,
                         help="逐条明细行数限制（默认 300，0=全量标注并重新统计维度）")
+    parser.add_argument("--attach_columns", nargs="*", default=None,
+                        help="回填到逐条明细的原始列名/关键词（支持模糊匹配），如 Y1.uiduid Y2.engine_verengine_ver 'Q1.整体满意度'")
+    parser.add_argument("--attach_headers", nargs="*", default=None,
+                        help="与 --attach_columns 一一对应的中文表头（可选，缺省自动命名）")
     args = parser.parse_args()
 
     # 解析 sheet_name
@@ -838,7 +978,9 @@ def main():
         result = export_text_report(results, output_path,
                                     file_path=args.file_path,
                                     sheet_name=sheet_name,
-                                    sample_n=args.sample_n)
+                                    sample_n=args.sample_n,
+                                    attach_columns=args.attach_columns,
+                                    attach_headers=args.attach_headers)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if result.get("status") == "error":
             sys.exit(1)
