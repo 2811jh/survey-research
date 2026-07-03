@@ -701,21 +701,142 @@ class SurveyDownloader:
         return True
 
     def save_config(self, cookies_dict):
-        """保存 Cookie 和平台信息到对应平台的 config 文件"""
+        """保存 Cookie 和平台信息到对应平台的 config 文件（保留已有的 web_access_browser 偏好）"""
         cfg_path = _config_file(self.platform or DEFAULT_PLATFORM)
+        existing = {}
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except Exception:
+                existing = {}
         config = {
             "platform": self.platform or DEFAULT_PLATFORM,
             "cookies": cookies_dict,
             "updated_at": datetime.now().isoformat(),
         }
+        # 保留浏览器偏好（CDP 免登录用），避免每次刷新 cookie 后丢失
+        if existing.get("web_access_browser"):
+            config["web_access_browser"] = existing["web_access_browser"]
         with open(cfg_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
         _log(f"Config saved to {cfg_path}")
 
+    def _read_config_raw(self):
+        """读取当前平台 config 文件原始 dict（不存在返回 {}）"""
+        cfg_path = _config_file(self.platform or DEFAULT_PLATFORM)
+        if not os.path.exists(cfg_path):
+            return {}
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _get_browser_pref(self):
+        """已持久化的日常浏览器偏好（用于 CDP 免登录抓 cookie）"""
+        return self._read_config_raw().get("web_access_browser")
+
+    def _save_browser_pref(self, browser):
+        """把日常浏览器偏好写入 config（合并保留 cookies 等已有字段）"""
+        cfg_path = _config_file(self.platform or DEFAULT_PLATFORM)
+        config = self._read_config_raw()
+        config["web_access_browser"] = browser
+        config.setdefault("platform", self.platform or DEFAULT_PLATFORM)
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        _log(f"Saved browser preference '{browser}' to {cfg_path}")
+
     # ── 自动刷新 Cookie ──────────────────────────────────────────────────
 
+    def _run_grab_cookie(self, browser=None, list_only=False, timeout=30):
+        """
+        调用内嵌的 webaccess/grab_cookie.mjs（Node），从用户日常浏览器 CDP 抓 cookie。
+        返回解析后的 dict（含 status），或 {"status": "unavailable", "reason": ...}
+        表示 CDP 路径整体不可用（应回退 Playwright）。
+        """
+        import shutil
+        node = shutil.which("node")
+        if not node:
+            return {"status": "unavailable", "reason": "node_not_found"}
+        script = os.path.join(_SCRIPT_DIR, "webaccess", "grab_cookie.mjs")
+        if not os.path.exists(script):
+            return {"status": "unavailable", "reason": "script_missing"}
+
+        cmd = [node, script, "--platform", self.platform or DEFAULT_PLATFORM]
+        if list_only:
+            cmd.append("--list")
+        elif browser:
+            cmd += ["--browser", browser]
+
+        import subprocess
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return {"status": "unavailable", "reason": "cdp_timeout"}
+        except Exception as e:
+            return {"status": "unavailable", "reason": f"spawn_error: {e}"}
+
+        out = (r.stdout or "").strip()
+        if not out:
+            return {"status": "unavailable", "reason": "empty_output", "stderr": (r.stderr or "").strip()[:200]}
+        try:
+            return json.loads(out)
+        except Exception:
+            return {"status": "unavailable", "reason": "bad_json", "raw": out[:200]}
+
+    def grab_cookie_via_cdp(self, browser=None, save_pref=False):
+        """
+        显式入口（供 CLI cookie-cdp 使用）：从日常浏览器抓 cookie 并落地 config。
+        返回原始 status dict；status=ok 时已写入 config，可选持久化浏览器偏好。
+        """
+        result = self._run_grab_cookie(browser=browser)
+        if result.get("status") == "ok":
+            self.save_config(result.get("cookies", {}))
+            self._load_config()
+            picked_browser = (result.get("browser") or {}).get("id")
+            if save_pref and picked_browser and picked_browser != "fallback":
+                self._save_browser_pref(picked_browser)
+        return result
+
+    def _try_cdp_refresh(self):
+        """中途自动刷新时优先尝试 CDP（非阻塞）：成功返回 True，否则 False（交给 Playwright 兜底）"""
+        pref = self._get_browser_pref()
+        result = self._run_grab_cookie(browser=pref)
+        status = result.get("status")
+        if status == "ok":
+            self.save_config(result.get("cookies", {}))
+            self._load_config()
+            _log(f"CDP cookie 刷新成功（浏览器: {(result.get('browser') or {}).get('label')}）")
+            return True
+        # 多浏览器且无偏好 → 中途无法弹窗，本次回退；提示可先做一次性设置
+        if status == "ambiguous":
+            ids = [b.get("id") for b in result.get("browsers", [])]
+            _log(f"CDP：检测到多个浏览器 {ids}，无法在运行中途选择，本次回退 Playwright。"
+                 f"可先运行 `cookie-cdp --browser <id> --save-pref` 设置以启用免登录。")
+        elif status == "no_login":
+            _log("CDP：浏览器已连接但未登录问卷平台，回退 Playwright。")
+        elif status in ("empty",):
+            _log("CDP：未检测到开启远程调试的浏览器，回退 Playwright。")
+        elif status == "unavailable":
+            _log(f"CDP 不可用（{result.get('reason')}），回退 Playwright。")
+        else:
+            _log(f"CDP 刷新未成功（{status}），回退 Playwright。")
+        return False
+
     def _auto_refresh_cookie(self):
-        """调用 refresh_cookie.py 自动刷新 Cookie，刷新后重新加载"""
+        """
+        自动刷新 Cookie：优先走 CDP（复用日常浏览器登录态，免独立 profile / 免首次手动登录），
+        失败则回退到原有 refresh_cookie.py（Playwright）流程。刷新后重新加载 config。
+        """
+        # 1. 优先尝试 CDP（非阻塞，任何问题都回退）
+        try:
+            if self._try_cdp_refresh():
+                return True
+        except Exception as e:
+            _log(f"CDP 刷新异常，回退 Playwright：{e}")
+
+        # 2. 回退：原有 Playwright 流程（保持不变）
         refresh_script = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "refresh_cookie.py"
         )
@@ -1505,6 +1626,12 @@ def main():
     # ── check: 检查认证 ─────────────────────────────────────────────────
     subparsers.add_parser("check", help="检查认证是否有效")
 
+    # ── cookie-cdp: 从日常浏览器 CDP 抓 cookie（免独立 profile / 免首次手动登录）──
+    cdp_p = subparsers.add_parser("cookie-cdp", help="从用户日常浏览器抓取登录 cookie（CDP）")
+    cdp_p.add_argument("--browser", default=None, help="指定浏览器 id（chrome/edge/chromium 等）")
+    cdp_p.add_argument("--save-pref", action="store_true", help="成功后把该浏览器记为偏好，后续自动使用")
+    cdp_p.add_argument("--list", action="store_true", help="仅列出检测到的、已开启远程调试的浏览器")
+
     # ── search: 搜索问卷 ────────────────────────────────────────────────
     search_p = subparsers.add_parser("search", help="按名称搜索问卷")
     search_p.add_argument("--name", required=True, help="问卷名称（支持模糊搜索）")
@@ -1559,6 +1686,18 @@ def main():
             _json_output({"status": "success", "message": "Cookie 配置成功，认证验证通过 ✓"})
         else:
             _json_output({"status": "warning", "message": "Cookie 已保存，但认证验证失败。请检查 Cookie 是否正确。"})
+
+    elif args.command == "cookie-cdp":
+        if getattr(args, "list", False):
+            _json_output(downloader._run_grab_cookie(list_only=True))
+        else:
+            result = downloader.grab_cookie_via_cdp(
+                browser=args.browser, save_pref=args.save_pref
+            )
+            if result.get("status") == "ok":
+                ok_auth = downloader.check_auth()
+                result["auth_valid"] = ok_auth
+            _json_output(result)
 
     elif args.command == "check":
         if downloader.check_auth():
