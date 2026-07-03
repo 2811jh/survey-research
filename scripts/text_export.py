@@ -220,6 +220,98 @@ def _auto_label_texts(texts: list, dimensions: list) -> list:
 
 
 
+OTHER_CANON = "其他/未归类"
+_OTHER_ALIASES = {
+    "其他", "其它", "无效", "模糊", "无效/模糊", "模糊/无效",
+    "其他/无效", "无效/其他", "未归类", "其他/未归类", "无",
+}
+
+
+def _split_labels(s):
+    """把 labels 字符串拆成标签列表，兼容中英逗号、顿号分隔。"""
+    return [x.strip() for x in re.split(r'[,，、]', str(s or "")) if x.strip()]
+
+
+def _canon_label(lab):
+    """归一化标签：所有"其他/无效"类别名合并为统一的 OTHER_CANON。"""
+    lab = (lab or "").strip()
+    if not lab or lab in _OTHER_ALIASES:
+        return OTHER_CANON
+    return lab
+
+
+def _rebuild_dimensions_from_details(details: list, ai_dimensions: list) -> list:
+    """
+    以逐条 details 为唯一数据源，重算各维度 count/percentage。
+
+    - 合并所有"其他/无效"类别为统一桶（OTHER_CANON），并显式保留展示（不再隐藏）；
+    - "其他/未归类"永远排在最后；
+    - 维度顺序优先沿用 AI 给出的顺序，details 中出现的新标签追加其后；
+    - examples 优先用 AI 提供的典型原声，缺失时回退为该标签下真实命中的原文（可验证）。
+
+    多标签文本会分别计入各标签，故占比之和可能 > 100%（正常现象）。
+    """
+    total = len(details)
+    counts = {}
+    ex_by = {}
+    seen_order = []
+    for d in details:
+        seen = set()
+        for lab in _split_labels(d.get("labels", "")):
+            canon = _canon_label(lab)
+            if canon in seen:
+                continue
+            seen.add(canon)
+            if canon not in counts:
+                counts[canon] = 0
+                ex_by[canon] = []
+                seen_order.append(canon)
+            counts[canon] += 1
+            txt = (d.get("text") or "").strip()
+            if txt and len(ex_by[canon]) < 3:
+                ex_by[canon].append(txt)
+
+    ai_examples = {}
+    ai_names = []
+    for dim in ai_dimensions or []:
+        nm = dim.get("name", "")
+        if _canon_label(nm) == OTHER_CANON:
+            continue
+        ai_names.append(nm)
+        ai_examples[nm] = dim.get("examples", []) or []
+
+    final_order = []
+    for nm in ai_names:
+        if nm in counts and nm not in final_order:
+            final_order.append(nm)
+    for nm in seen_order:
+        if nm != OTHER_CANON and nm not in final_order:
+            final_order.append(nm)
+    if OTHER_CANON in counts:
+        final_order.append(OTHER_CANON)
+
+    dims = []
+    for nm in final_order:
+        c = counts.get(nm, 0)
+        pct = f"{c / total * 100:.1f}%" if total > 0 else "0%"
+        examples = ai_examples.get(nm) or ex_by.get(nm, [])
+        dims.append({"name": nm, "count": c, "percentage": pct, "examples": examples})
+    return dims
+
+
+def _augment_conclusion(conclusion: str, dims: list, total: int) -> str:
+    """在结论末尾追加脚本自动计算的数据佐证行（数字由脚本回填，杜绝手写幻觉）。"""
+    non_other = [d for d in dims if d["name"] != OTHER_CANON]
+    top = sorted(non_other, key=lambda d: -d.get("count", 0))[:4]
+    parts = [f"{d['name']} {d['percentage']}（{d['count']}条）" for d in top]
+    other = next((d for d in dims if d["name"] == OTHER_CANON), None)
+    stat = f"【数据佐证（脚本自动计算，N={total}）】" + "；".join(parts)
+    if other:
+        stat += f"；{OTHER_CANON} {other['percentage']}（{other['count']}条）"
+    base = (conclusion or "").strip()
+    return (base + "\n" + stat) if base else stat
+
+
 def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
     """
     写入单题的总结概览 sheet（纯 openpyxl 手写竖排布局）。
@@ -447,22 +539,25 @@ def export_text_report(results: list, output_path: str,
     """
     将文本分析结果导出为专业 Excel 报告。
 
-    当 details 为空但提供了 file_path 时，自动从原始数据中提取文本，
-    基于 dimensions 关键词做自动标注，生成逐条明细。
+    数据源单一化：一律以逐条 details 为唯一数据源反算维度统计（count/percentage）
+    并回填结论中的数字，确保总结概览与逐条明细完全一致、结论不出现幻觉数字。
 
-    sample_n 控制逐条明细的行数：
-      - sample_n > 0: 仅标注 sample_n 条（与 AI 编码的抽样一致），总结概览使用 AI 的维度统计
-      - sample_n == 0: 全量标注，并根据全量标注结果重新统计维度 count/percentage
+    details 缺失时的策略（硬制）：
+      - sample_n > 0（抽样模式，默认）：必须由 AI 逐条编码填入 details，否则直接
+        返回 error（error_type=missing_details），不生成表格。
+      - sample_n == 0（全量模式）：允许用 file_path + dimensions 关键词自动兜底
+        （覆盖率较低，结果带 keyword_fallback_used 标记）。
 
     Args:
         results: 分析结果列表
         output_path: 输出文件路径
-        file_path: 原始数据文件路径（可选，用于自动标注）
+        file_path: 原始数据文件路径（仅全量兜底模式用于关键词自动标注）
         sheet_name: 工作表名或编号（默认 0）
-        sample_n: 明细行数限制（默认 300，0=全量）
+        sample_n: 明细行数限制（默认 300，0=全量关键词兜底）
 
     Returns:
         {"status": "success", "output_path": str, "sheets": [str]}
+        或 {"status": "error", "error_type": "missing_details", ...}
     """
     if not results:
         return {"error": "results 不能为空"}
@@ -486,8 +581,31 @@ def export_text_report(results: list, output_path: str,
         except Exception:
             source_df = None
 
+    # ---- 硬制校验：抽样模式必须提供 details（逐条 LLM 编码），否则拒绝出表 ----
+    missing_q = None
+    for q in results:
+        if q.get("details"):
+            continue
+        if sample_n == 0 and q.get("dimensions") and source_df is not None:
+            continue  # 全量模式允许关键词兜底
+        missing_q = q
+        break
+    if missing_q is not None:
+        return {
+            "status": "error",
+            "error_type": "missing_details",
+            "question": missing_q.get("question", ""),
+            "message": (
+                "抽样模式下必须先为每条抽样文本做逐条编码，再把结果填入 results JSON 的 details "
+                "（格式 [{\"text\":\"用户原文\",\"labels\":\"维度A, 维度B\"}]）后才能导出。"
+                "这样总结概览与逐条明细都以 AI 的编码为唯一数据源，准确度最高。"
+                "如确需关键词自动兜底，请显式加 --sample_n 0 走全量标注（覆盖率较低）。"
+            ),
+        }
+
     sheets_created = []
-    auto_labeled_count = 0
+    keyword_fallback_used = False
+    warnings = []
 
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
         for idx, question_data in enumerate(results, 1):
@@ -495,8 +613,8 @@ def export_text_report(results: list, output_path: str,
             dimensions = question_data.get("dimensions", [])
             question_col = question_data.get("question", "")
 
-            # 如果 details 为空，尝试自动标注
-            if not details and dimensions and source_df is not None and question_col:
+            # 全量模式且 AI 未填 details → 关键词兜底（带告警）
+            if not details and sample_n == 0 and dimensions and source_df is not None and question_col:
                 # 尝试精确匹配列名，失败则模糊匹配
                 matched_col = question_col if question_col in source_df.columns else None
                 if not matched_col:
@@ -515,32 +633,24 @@ def export_text_report(results: list, output_path: str,
                     if "error" not in extract_result:
                         all_texts = extract_result.get("texts", [])
                         if all_texts:
-                            if sample_n > 0 and len(all_texts) > sample_n:
-                                # 抽样模式：只标注 sample_n 条
-                                import random
-                                sampled_texts = random.sample(all_texts, sample_n)
-                                details = _auto_label_texts(sampled_texts, dimensions)
-                            else:
-                                # 全量模式：标注全部文本
-                                details = _auto_label_texts(all_texts, dimensions)
-
-                            # 【关键】无论抽样还是全量，都从逐条明细中反算总结概览的统计
-                            # 确保总结概览与逐条明细数据完全一致
-                            dim_counts = {}
-                            for d in details:
-                                for label in d["labels"].split(", "):
-                                    label = label.strip()
-                                    if label and label != "其他":
-                                        dim_counts[label] = dim_counts.get(label, 0) + 1
-                            total_labeled = len(details)
-                            for dim in dimensions:
-                                name = dim.get("name", "")
-                                count = dim_counts.get(name, 0)
-                                dim["count"] = count
-                                dim["percentage"] = f"{count / total_labeled * 100:.1f}%" if total_labeled > 0 else "0%"
-
+                            details = _auto_label_texts(all_texts, dimensions)
                             question_data["details"] = details
-                            auto_labeled_count += len(details)
+                            keyword_fallback_used = True
+
+            # ---- 单一数据源：一律从 details 反算维度统计 + 脚本回填结论数字 ----
+            if details:
+                rebuilt = _rebuild_dimensions_from_details(details, dimensions)
+                question_data["dimensions"] = rebuilt
+                question_data["conclusion"] = _augment_conclusion(
+                    question_data.get("conclusion", ""), rebuilt, len(details))
+                # 未归类占比告警
+                other_dim = next((d for d in rebuilt if d["name"] == OTHER_CANON), None)
+                if other_dim and len(details) > 0:
+                    ratio = other_dim["count"] / len(details)
+                    if ratio > 0.2:
+                        warnings.append(
+                            f"[{question_col}] 未归类占比 {ratio * 100:.1f}%（>20%），"
+                            "建议补充维度或重新逐条编码以提升准确度。")
 
             # 总结概览
             summary_name = _write_summary_sheet(writer, question_data, idx)
@@ -556,8 +666,10 @@ def export_text_report(results: list, output_path: str,
         "sheets": sheets_created,
         "questions_count": len(results),
     }
-    if auto_labeled_count > 0:
-        result["auto_labeled_count"] = auto_labeled_count
+    if keyword_fallback_used:
+        result["keyword_fallback_used"] = True
+    if warnings:
+        result["warnings"] = warnings
 
     return result
 
@@ -615,6 +727,8 @@ def main():
                                     sheet_name=sheet_name,
                                     sample_n=args.sample_n)
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        if result.get("status") == "error":
+            sys.exit(1)
     except Exception as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
