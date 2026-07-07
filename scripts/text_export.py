@@ -284,10 +284,19 @@ def _rebuild_dimensions_from_details(details: list, ai_dimensions: list) -> list
     non_other.sort(key=lambda nm: (-counts[nm], nm))
     final_order = non_other + ([OTHER_CANON] if OTHER_CANON in counts else [])
 
+    # 归一化占比基数：剔除「其他/未归类」后的有效样本数
+    other_count = counts.get(OTHER_CANON, 0)
+    valid_n = max(total - other_count, 0)
+
     dims = []
     for nm in final_order:
         c = counts.get(nm, 0)
         pct = f"{c / total * 100:.1f}%" if total > 0 else "0%"
+        # 归一化占比：剔除「其他/未归类」后按有效样本数重算；其他行留空（None）
+        if nm == OTHER_CANON:
+            norm_pct = None
+        else:
+            norm_pct = (c / valid_n) if valid_n > 0 else 0.0
         # 典型原文：优先 AI 精选，再用真实命中的原文补足到 5 条
         examples = []
         for e in ai_examples.get(nm, []):
@@ -300,7 +309,8 @@ def _rebuild_dimensions_from_details(details: list, ai_dimensions: list) -> list
                 break
             if e and e not in examples:
                 examples.append(e)
-        dims.append({"name": nm, "count": c, "percentage": pct, "examples": examples})
+        dims.append({"name": nm, "count": c, "percentage": pct,
+                     "norm_percentage": norm_pct, "examples": examples})
     return dims
 
 
@@ -460,7 +470,7 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
     # 创建 sheet（不用 pandas）
     ws = writer.book.create_sheet(sheet_name)
     border = thin_border()
-    total_width = 5  # 序号 | 问题类别 | 反馈条数 | 占比 | 典型用户原文
+    total_width = 6  # 序号 | 问题类别 | 反馈条数 | 占比 | 归一化占比 | 典型用户原文
 
     row = 1
 
@@ -509,10 +519,10 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
     # ---- 维度统计表 ----
     if dimensions:
         # 表头
-        headers = ["序号", "问题类别", "反馈条数", "占比", "典型用户原文"]
+        headers = ["序号", "问题类别", "反馈条数", "占比", "归一化占比", "典型用户原文"]
         h_fill = make_fill(TR.SUBTITLE_BG)
         h_font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
-        h_aligns = [ALIGN_CENTER, ALIGN_LEFT, ALIGN_CENTER, ALIGN_CENTER, ALIGN_CENTER]
+        h_aligns = [ALIGN_CENTER, ALIGN_LEFT, ALIGN_CENTER, ALIGN_CENTER, ALIGN_CENTER, ALIGN_CENTER]
         for ci, h in enumerate(headers, 1):
             cell = ws.cell(row=row, column=ci, value=h)
             cell.fill = h_fill
@@ -565,8 +575,18 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
             cell.alignment = ALIGN_RIGHT
             cell.border = border
 
+            # 归一化占比（剔除「其他/未归类」后的有效样本占比；其他行留空）
+            norm_val = dim.get("norm_percentage")
+            cell = ws.cell(row=row, column=5, value=norm_val)
+            cell.number_format = '0.0%'
+            cell.fill = zebra
+            cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True,
+                             color=(TR.TEXT_MUTE if is_other else TR.INDIGO_MAIN))
+            cell.alignment = ALIGN_RIGHT
+            cell.border = border
+
             # 典型用户原文
-            cell = ws.cell(row=row, column=5, value=example_text)
+            cell = ws.cell(row=row, column=6, value=example_text)
             cell.fill = zebra
             cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_SUB)
             cell.alignment = ALIGN_TOP_LEFT
@@ -584,6 +604,14 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
                 showValue=True, minLength=0, maxLength=100,
             )
             ws.conditional_formatting.add(f"D{first_data_row}:D{row - 1}", rule)
+            # 归一化占比列 DataBar（深靛条形，剔除无效样本后的真实分布）
+            norm_rule = DataBarRule(
+                start_type='num', start_value=0,
+                end_type='max',
+                color=TR.INDIGO_MAIN,
+                showValue=True, minLength=0, maxLength=100,
+            )
+            ws.conditional_formatting.add(f"E{first_data_row}:E{row - 1}", norm_rule)
 
         # ---- 分析方法说明（表格下方注释，专业化） ----
         n_total = len(question_data.get("details", []))
@@ -608,6 +636,7 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
             f"· 样本：有效抽样 N={n_total} 条；共归纳出 {n_dims} 个主题维度 + 1 个「其他/未归类」。",
             "· 多标签：一条反馈可同时命中多个维度，故各维度占比之和可能 > 100%（占比 = 该维度条数 ÷ N）。",
             "· 数据一致性：上表「反馈条数 / 占比」均由脚本从「逐条明细」页实时反算，两页数据完全一致，可逐条核对。",
+            "· 归一化占比：在「占比」基础上剔除「其他/未归类」样本，按有效反馈数（N − 未归类条数）重新计算，更真实反映实质建议的分布；「其他/未归类」行不计算归一化占比（留空）。",
             "· 「其他/未归类」：无实质建议（如“很好”“没有”）或无法归入上述主题的反馈；占比越低说明主题覆盖越充分。",
             "· 典型用户原文：每个维度默认展示最多 5 条真实命中的反馈，均可在「逐条明细」页检索验证。",
         ]
@@ -625,10 +654,11 @@ def _write_summary_sheet(writer, question_data: dict, sheet_idx: int):
 
     # ---- 列宽 ----
     ws.column_dimensions['A'].width = 7    # 序号
-    ws.column_dimensions['B'].width = 32   # 问题类别
+    ws.column_dimensions['B'].width = 30   # 问题类别
     ws.column_dimensions['C'].width = 11   # 反馈条数
-    ws.column_dimensions['D'].width = 14   # 占比
-    ws.column_dimensions['E'].width = 72   # 典型用户原文
+    ws.column_dimensions['D'].width = 12   # 占比
+    ws.column_dimensions['E'].width = 14   # 归一化占比
+    ws.column_dimensions['F'].width = 70   # 典型用户原文
 
     ws.sheet_properties.tabColor = TR.TITLE_BG
     ws.sheet_view.showGridLines = False
