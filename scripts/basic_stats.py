@@ -65,6 +65,9 @@ def _detect_question_type(col_name: str) -> str:
         return "单选题"
     if "填空" in cn or "非必填" in cn:
         return "填空题"
+    # 开放题标志词（列名未标注题型时兜底）：题干含这些词通常是开放回答
+    if any(kw in cn for kw in ["为什么", "请具体说说", "具体说说", "请描述", "请说明"]):
+        return "填空题"
     return ""
 
 
@@ -115,10 +118,6 @@ def _build_question_structure(df: pd.DataFrame) -> list:
         # 非 Q 开头 → 跳过
         qm = RE_Q.match(cn)
         if not qm:
-            continue
-
-        # 个人信息 → 跳过
-        if any(pk in cn for pk in ["姓名", "手机", "电话", "微信", "邮箱", "称呼", "联系到您", "个人信息"]):
             continue
 
         # 输入文本附属列 → 跳过
@@ -177,12 +176,13 @@ def _build_question_structure(df: pd.DataFrame) -> list:
                 else:
                     q["type"] = "单选题"
             except (ValueError, TypeError):
-                unique_rate = series.nunique() / len(series)
+                nunique = series.nunique()
+                unique_rate = nunique / len(series) if len(series) else 0
                 avg_len = series.astype(str).str.len().mean()
-                if unique_rate > 0.5 and avg_len > 8:
-                    q["type"] = "填空题"
-                else:
-                    q["type"] = "单选题"
+                max_len = series.astype(str).str.len().max()
+                # 填空题特征：高文本多样性（短词重复导致 avg_len 偏低时，用 nunique/max_len 兜底）
+                is_fill = (nunique > 20) or (unique_rate > 0.5 and avg_len > 5) or (max_len > 30 and unique_rate > 0.3)
+                q["type"] = "填空题" if is_fill else "单选题"
         else:
             # 多列：用整列 dropna 检测（不能只 head，因为条件跳转题前N行可能全为空）
             is_binary = True
@@ -208,7 +208,12 @@ def _build_question_structure(df: pd.DataFrame) -> list:
             if is_binary and not is_all_empty:
                 q["type"] = "多选题"
             elif is_all_empty and q["sub_questions"]:
-                if is_scale_matrix:
+                # 列全空时无法靠数据判断，用列名关键词辅助
+                multi_kw = ["都选上", "都选", "请将", "哪些"]
+                is_multi_hint = any(kw in label for kw in multi_kw)
+                if is_multi_hint:
+                    q["type"] = "多选题"
+                elif is_scale_matrix:
                     q["type"] = "矩形量表题"
                 else:
                     q["type"] = "矩形单选题"
@@ -218,6 +223,12 @@ def _build_question_structure(df: pd.DataFrame) -> list:
                 q["type"] = "矩形单选题"
             else:
                 q["type"] = "多选题"
+
+    # ---- 后处理1.5：多列填空题 → 多项填空题 ----
+    # 单列填空题是普通填空题；多列填空题（每个子问题一列文本）应为多项填空题
+    for q in result:
+        if q["type"] == "填空题" and len(q["columns"]) > 1:
+            q["type"] = "多项填空题"
 
     # ---- 后处理2：在 label 中插入 [题型] 标记 ----
     for q in result:
