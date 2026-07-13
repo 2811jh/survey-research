@@ -50,18 +50,10 @@ python {SKILL_DIR}/scripts/crosstab.py \
 
 > 📖 **参考** `references/05-survey-interpretation.md`：差异判断需结合样本量——小样本（< 100）时 5pp 差异不一定显著；NPS 分差 < 5 分通常为噪音；李克特量表不要只看均值差，需看分布变化。
 
-### 5. 第二轮导出（可选）
+### 5. 生成报告
 
-分析完 JSON 后，撰写结构化报告 JSON，再次调用脚本导出含报告的 Excel：
-```bash
-python {SKILL_DIR}/scripts/crosstab.py \
-  --file_path "用户文件路径" \
-  --row_questions '["all"]' \
-  --col_questions '["Q17.性别"]' \
-  --calc_scores auto \
-  --report_json '{"per_question":[{"question":"Q1...", "finding":"发现..."}], "key_findings":["发现1"], "recommendations":["建议1"], "summary":"总结"}'
-```
+分析完 JSON 后，跳转到 `references/17-md-report-workflow.md` 生成 Markdown 报告。
 
 ---
 
-完成后继续执行下一阶段（如有），或跳转到 `references/17-md-report-workflow.md` 生成报告。
+完成后继续执行下一阶段（如有）。

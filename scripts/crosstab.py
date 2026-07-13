@@ -16,8 +16,7 @@
         --col_questions '["Q17.性别"]' \
         [--merge_rules '{"Q1.满意度": {"不满意": [1,2,3], "满意": [4,5]}}'] \
         [--calc_scores auto] \
-        [--output_path "C:/xxx/data_交叉分析.xlsx"] \
-        [--report_json '{"per_question":[...]}']
+        [--output_path "C:/xxx/data_交叉分析.xlsx"]
 """
 
 import argparse
@@ -34,7 +33,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from load_and_classify import classify_columns
 from _styles import (
-    format_data_sheet, format_score_sheet, write_structured_report,
+    format_data_sheet, format_score_sheet,
     Theme, header_fill, header_font, body_font,
     thin_border, make_fill, ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT,
 )
@@ -558,7 +557,6 @@ def export_crosstab_excel(
     ct_result: dict,
     output_path: str,
     score_df: Optional[pd.DataFrame] = None,
-    report_text: str = "",
 ) -> str:
     """导出交叉分析 Excel 报告"""
     freq_df = ct_result["freq_df"]
@@ -588,59 +586,7 @@ def export_crosstab_excel(
             format_score_sheet(writer.sheets['得分分析'])
             writer.sheets['得分分析'].sheet_properties.tabColor = "C6EFCE"
 
-        # Sheet 4: 分析报告（如有）
-        if report_text:
-            _write_report_sheet(writer, report_text, percent_df, col_labels)
-
     return output_path
-
-
-def _write_report_sheet(writer, report_text: str, percent_df=None, col_labels=None):
-    """写入 AI 分析报告 sheet"""
-    try:
-        report_data = json.loads(report_text)
-
-        # v3 结构化 JSON
-        if isinstance(report_data, dict) and "per_question" in report_data:
-            ws = writer.book.create_sheet('分析报告')
-            write_structured_report(ws, report_data, percent_df, col_labels or [])
-            ws.sheet_properties.tabColor = "D9C4EC"
-            return
-
-        # v2 列表 JSON
-        if isinstance(report_data, list):
-            report_df = pd.DataFrame(report_data)
-            col_mapping = {
-                "question": "题目",
-                "finding": "关键发现",
-                "detail": "详细说明",
-            }
-            report_df = report_df.rename(columns={
-                k: v for k, v in col_mapping.items() if k in report_df.columns
-            })
-            report_df.to_excel(writer, sheet_name='分析报告', index=False)
-            ws = writer.sheets['分析报告']
-            ws.sheet_properties.tabColor = "D9C4EC"
-            return
-    except (json.JSONDecodeError, TypeError):
-        pass
-
-    # 纯文本模式
-    ws = writer.book.create_sheet('分析报告')
-    from _styles import Theme
-    from openpyxl.styles import Font, Alignment
-    ws.cell(row=1, column=1, value="交叉分析报告")
-    ws.cell(row=1, column=1).font = Font(name=Theme.FONT_NAME, size=16, bold=True, color=Theme.HEADER_BG)
-
-    lines = report_text.split("\n")
-    for i, line in enumerate(lines, start=3):
-        cell = ws.cell(row=i, column=1, value=line)
-        cell.font = Font(name=Theme.FONT_NAME, size=11)
-        cell.alignment = Alignment(wrap_text=True, vertical='top')
-
-    ws.column_dimensions['A'].width = 120
-    ws.sheet_view.showGridLines = False
-    ws.sheet_properties.tabColor = "D9C4EC"
 
 
 # ========================================================================= #
@@ -704,7 +650,6 @@ def run_crosstab_pipeline(
     merge_rules: dict = None,
     calc_scores_mode: str = None,
     output_path: str = None,
-    report_json: str = "",
 ) -> dict:
     """
     完整的交叉分析流水线。
@@ -717,7 +662,6 @@ def run_crosstab_pipeline(
         merge_rules: {"列名": {"新标签": [原始值]}} 合并规则
         calc_scores_mode: "auto" 自动检测 / None 不计算
         output_path: 输出路径
-        report_json: AI 报告 JSON 文本
 
     Returns:
         JSON 输出
@@ -769,7 +713,7 @@ def run_crosstab_pipeline(
         output_path = f"{base}_交叉分析.xlsx"
 
     # 导出 Excel
-    export_crosstab_excel(ct_result, output_path, score_df, report_json)
+    export_crosstab_excel(ct_result, output_path, score_df)
 
     # 生成 JSON 输出
     return _generate_output_json(ct_result, diff_summary, score_df, output_path)
@@ -788,7 +732,6 @@ def main():
     parser.add_argument("--merge_rules", default=None, help='合并规则 JSON')
     parser.add_argument("--calc_scores", default=None, help='"auto" 或题目列表 JSON')
     parser.add_argument("--output_path", default=None, help="输出 Excel 路径")
-    parser.add_argument("--report_json", default="", help="AI 报告 JSON 文本")
     args = parser.parse_args()
 
     sheet_name = args.sheet_name
@@ -826,7 +769,6 @@ def main():
             merge_rules=merge_rules,
             calc_scores_mode=args.calc_scores,
             output_path=args.output_path,
-            report_json=args.report_json,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except Exception as e:
