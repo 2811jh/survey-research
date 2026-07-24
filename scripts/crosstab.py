@@ -77,6 +77,59 @@ def _extract_score_from_option(option) -> Optional[float]:
 
 
 # ========================================================================= #
+#                     职业默认重编码预设 (Occupation Recode)
+# ========================================================================= #
+
+# 默认职业分类方案（按序输出）：
+#   小学生 / 初中生 / 高中生 / 大学生 / 工作人群 / 其他 / 不愿意透露
+# 每个类别用关键词子串匹配原始选项文本，以适配不同问卷的措辞差异。
+# 匹配优先级 = 列表顺序（先匹配到者归入该类，学生类优先于工作人群）。
+OCCUPATION_RECODE_PRESET = [
+    ("小学生", ["小学"]),
+    ("初中生", ["初中"]),
+    ("高中生", ["高中", "中专", "职高", "技校"]),
+    ("大学生", ["大学", "专科", "本科", "研究生", "硕士", "博士", "在校"]),
+    ("工作人群", [
+        "自由职业", "自雇", "无固定工作", "兼职", "国企", "事业单位", "公务员",
+        "专业技术", "民营", "私企", "外企", "个体户", "私营", "企业主",
+        "车间", "制造业", "生产", "商场", "餐饮", "运输", "服务业",
+        "农林牧渔", "工作人员", "劳动者", "在职",
+    ]),
+    ("其他", ["其他"]),
+    ("不愿意透露", ["不愿", "保密", "拒绝"]),
+]
+
+
+def build_occupation_recode(df: pd.DataFrame, column: str) -> dict:
+    """
+    针对职业列，依据 OCCUPATION_RECODE_PRESET 关键词匹配，
+    自动构建 {新标签: [原始值...]} 的 merge_rules。
+
+    未匹配到任何关键词的原始值归入「其他」。
+    返回的 dict 仅包含实际出现的类别，顺序遵循预设。
+    """
+    if column not in df.columns:
+        raise ValueError(f"列 '{column}' 不存在")
+
+    raw_values = [v for v in df[column].dropna().unique()]
+    rules = {label: [] for label, _ in OCCUPATION_RECODE_PRESET}
+
+    for val in raw_values:
+        text = str(val)
+        matched = None
+        for label, keywords in OCCUPATION_RECODE_PRESET:
+            if any(kw in text for kw in keywords):
+                matched = label
+                break
+        if matched is None:
+            matched = "其他"
+        rules[matched].append(val)
+
+    # 去掉空类别，保持预设顺序
+    return {label: vals for label, vals in rules.items() if vals}
+
+
+# ========================================================================= #
 #                        合并选项 (Merge / Recode)
 # ========================================================================= #
 
@@ -679,6 +732,9 @@ def run_crosstab_pipeline(
     # 合并选项
     if merge_rules:
         for col_name, rules in merge_rules.items():
+            # 支持职业默认预设：值为字符串 "occupation_default" 时自动构建分类
+            if isinstance(rules, str) and rules == "occupation_default":
+                rules = build_occupation_recode(df, col_name)
             new_col = merge_options(df, col_name, rules)
             # 将合并后的列替换到 col_questions 中
             if col_name in col_questions:
