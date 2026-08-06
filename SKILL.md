@@ -33,15 +33,16 @@ description: |
 {SKILL_DIR}/scripts/survey_download.py
 {SKILL_DIR}/scripts/refresh_cookie.py
 {SKILL_DIR}/scripts/enrich_columns.py
+{SKILL_DIR}/scripts/survey_drift.py
 ```
 
 其中 `{SKILL_DIR}` 是本 skill 所在目录的绝对路径。
 
 ## 依赖要求
 
-脚本依赖 `pandas`、`numpy`、`openpyxl`、`requests`。如果用户环境缺失，先执行：
+脚本依赖 `pandas`、`numpy`、`scipy`、`openpyxl`、`requests`。如果用户环境缺失，先执行：
 ```bash
-pip install pandas numpy openpyxl requests
+pip install pandas numpy scipy openpyxl requests
 ```
 
 ---
@@ -229,6 +230,14 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 > ⚠️ **关键**：先与用户对齐产品需求（要回答哪几个业务决策），再组织章节框架，
 > 不要套通用满意度模板。
 
+### 阶段 6：时间异动诊断（按需）
+
+**触发条件**：用户有单份含时间列的回流问卷数据，想按周/月/天自动对比、
+诊断满意度/NPS/单选/多选的异动（如"按周诊断这份回流数据的变化"、
+"逐题对比各月满意度和 NPS 有没有显著变化"、"回流数据有没有异常波动"）。
+
+→ **读取 `references/18-drift-workflow.md` 获取完整执行步骤。**
+
 ---
 
 ## ⭐ 后续操作提示（必须执行）
@@ -253,6 +262,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 • 做文本分析，归纳开放题中的核心主题和用户原声
 • 对全量文本进行分析（当前为 300 条抽样）
 • 做满意度专项分析（NPS + 细分维度 + 满意/不满原因 + 预警）
+• 做时间异动诊断（按周/月/天对比满意度/NPS/单选/多选，定位显著变化并写初步结论）
 
 📋 报告方面：
 • 重新生成 Markdown 报告（调整章节/补充文本归纳/调整时间范围等参数）
@@ -349,6 +359,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 | `references/10-survey-clean.md` | 问卷数据清洗规则与操作流程（数据来源路由 B） |
 | `references/11-survey-cookie.md` | Cookie 处理与自动刷新（下载遇到认证问题时） |
 | `references/17-md-report-workflow.md` | **产品需求驱动的 Markdown 报告生成流程**（阶段 5 默认流程，含报告格式合同与强制要素） |
+| `references/18-drift-workflow.md` | 单份回流问卷按时间分桶的异动诊断流程（阶段 6） |
 
 ### 核心调用时机
 
