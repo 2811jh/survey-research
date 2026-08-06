@@ -69,10 +69,10 @@ cd ~/.claude/skills/survey-research && git pull
 ## � 环境要求
 
 - **Python 3.8+**（用于执行分析脚本）
-- **Python 依赖**：`pandas`、`numpy`、`openpyxl`、`requests`（Word 报告额外需要 `python-docx`）
+- **Python 依赖**：`pandas`、`numpy`、`scipy`、`openpyxl`、`requests`（Word 报告额外需要 `python-docx`）
 
 ```bash
-pip install pandas numpy openpyxl requests python-docx
+pip install pandas numpy scipy openpyxl requests python-docx
 ```
 
 ---
@@ -190,6 +190,7 @@ survey-research/
 │   ├── report_export.py       # 报告格式转换（md→docx/xlsx/txt）
 │   ├── survey_download.py     # 问卷数据下载（支持国内/国外平台）
 │   ├── enrich_columns.py      # 字段扩充：在日期列右侧插入"周"/"月"派生列
+│   ├── survey_drift.py        # 时间异动诊断：按周/月/天分桶，逐题显著性检验 + 导出 4-Sheet Excel
 │   ├── refresh_cookie.py      # Cookie 自动刷新
 │   ├── _styles.py             # Excel 样式工具
 │   ├── config.json            # 平台配置（自动生成，含 cookie，已 gitignore）
@@ -210,7 +211,9 @@ survey-research/
     ├── 12-crosstab-workflow.md    # 交叉分析完整执行步骤
     ├── 13-text-analysis-workflow.md  # 文本分析完整执行步骤
     ├── 16-compare-workflow.md     # 多期对比分析流程
-    └── 17-md-report-workflow.md   # 产品需求驱动的 Markdown 报告流程（默认报告流程）
+    ├── 17-md-report-workflow.md   # 产品需求驱动的 Markdown 报告流程（默认报告流程）
+    └── 18-drift-workflow.md       # 单份回流问卷时间异动诊断流程（按周/月/天）
+```
 
 ---
 
@@ -223,6 +226,7 @@ survey-research/
 | `{文件名}_基础统计.xlsx` | 各题频率分布详细数据（由问卷系统统计报表或本地脚本生成） |
 | `{文件名}_交叉分析.xlsx` | 分组差异对比数据 |
 | `{文件名}_文本分析.xlsx` | 文本维度总结 + 逐条标注明细 |
+| `回流异动诊断_{按周/月/天}_{时间戳}.xlsx` | 时间异动 4-Sheet：指标总览 / 逐题异动明细（整体基线列 + 逐期热力 + 样本量行）/ 异动汇总 / 方法与样本 |
 
 ---
 

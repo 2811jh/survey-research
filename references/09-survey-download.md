@@ -20,6 +20,7 @@ python {SKILL_DIR}/scripts/survey_download.py download --id 问卷ID --output_di
 | `--clean` | 下载前自动配置清洗条件（流程详见 `clean.md`，务必先 `--dry-run` 预览确认） | 不清洗 |
 | `--skip-existing` | 输出目录已有同问卷同类型文件时跳过下载，直接复用 | 不跳过 |
 | `--no-stat` | 跳过下载系统统计报表（默认同时下载统计报表） | 不跳过 |
+| `--export-timeout` | 等待服务端导出完成的最长秒数（大问卷导出可能超 300s，可加大） | `300` |
 
 ## 流程
 
