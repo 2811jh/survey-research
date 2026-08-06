@@ -1356,7 +1356,8 @@ class SurveyDownloader:
 
     def run(self, survey_id=None, survey_name=None, export_type="both",
             start_date=None, end_date=None, output_dir=None, select_index=None,
-            clean=False, skip_existing=False, download_stat=True, trap_indices=None):
+            clean=False, skip_existing=False, download_stat=True, trap_indices=None,
+            export_timeout=300):
         """
         主入口：搜索问卷 → (可选)自动清洗 → 触发导出 → 等待完成 → 下载文件
         export_type: "both" | "text" | "quantified"
@@ -1577,7 +1578,7 @@ class SurveyDownloader:
         # 7. 等待导出完成
         target_type_set = {dt for dt, _ in types_need_download}
         _log("Waiting for export to complete...")
-        wait_result = self.wait_for_export(target_id, target_type_set)
+        wait_result = self.wait_for_export(target_id, target_type_set, timeout=export_timeout)
         if wait_result["status"] != "success":
             _write_status(output_dir, wait_result)
             return wait_result
@@ -1675,6 +1676,8 @@ def main():
                        help="跳过下载系统统计报表（默认同时下载统计报表）")
     dl_p.add_argument("--traps", default=None,
                        help="一并剔除的陷阱题题号，逗号分隔（如 7,9,10,11）或 all；需配合 --clean")
+    dl_p.add_argument("--export-timeout", type=int, default=300,
+                       help="等待服务端导出完成的最长秒数（大问卷导出可能超过默认 300s，建议加大）")
 
     args = parser.parse_args()
     if not args.command:
@@ -1763,6 +1766,7 @@ def main():
             skip_existing=args.skip_existing,
             download_stat=not args.no_stat,
             trap_indices=_parse_traps(args.traps),
+            export_timeout=args.export_timeout,
         )
         _json_output(result)
 

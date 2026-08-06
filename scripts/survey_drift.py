@@ -397,6 +397,22 @@ def _overall_chi_square(by_bucket, sizes, ordered):
 
 # ===================== Excel 导出 ===================== #
 
+def _overall_props(q, buckets):
+    """全样本合并的整体占比（各桶按样本量加权），作为对比基线。
+    返回 ({option: prop}, overall_n)。多选题同样成立（勾选率×n 求和 / 总n）。"""
+    sizes = q.get("sizes", {})
+    by = q.get("by_bucket", {})
+    total = sum(sizes.get(b, 0) for b in buckets)
+    res = {}
+    for opt in q.get("options", []):
+        if total > 0:
+            s = sum(by.get(b, {}).get(opt, 0.0) * sizes.get(b, 0) for b in buckets)
+            res[opt] = s / total
+        else:
+            res[opt] = 0.0
+    return res, total
+
+
 def _trend_mark(delta, significant, is_pp):
     unit = "pp" if is_pp else "分"
     prec = 1 if is_pp else 2
@@ -436,12 +452,14 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
 
     # ---- Sheet 2: 逐题异动明细 ----
     ws2 = wb.create_sheet("📈 逐题异动明细")
-    ws2.append(["题目", "选项"] + buckets + ["异动周", "AI 结论"])
-    block_ranges = []          # (start_row, end_row) 每题一块，供分块斑马纹
+    ws2.append(["题目", "选项", "整体"] + buckets + ["异动周", "AI 结论"])
+    block_ranges = []          # (start_row, end_row) 每题一块（含样本量行），供分块斑马纹
     week_marks = {}            # (row, col) -> (kind, direction) 逐周环比标注
-    concl_col = 2 + len(buckets) + 2  # AI结论列号
+    sample_rows = set()        # 各题"样本量"行行号
+    concl_col = 3 + len(buckets) + 2  # AI结论列号（题目/选项/整体 + 各桶 + 异动周 + AI）
     for q in findings["questions"]:
         opts = q["options"]
+        overall, overall_n = _overall_props(q, buckets)
         start_row = ws2.max_row + 1
         # 逐选项、逐"到达桶"的相邻期检验：{option: {to_bucket: test}}
         tests_by_opt = {}
@@ -454,7 +472,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
                 t = tests_by_opt.get(opt, {}).get(buckets[bi])
                 if not t:
                     continue
-                col = 3 + bi
+                col = 4 + bi  # 各桶列：桶0=D(4)，桶bi=4+bi
                 if t.get("drift"):
                     week_marks[(row_idx, col)] = ("drift", t["direction"])
                     arrow = "▲" if t["delta_pp"] > 0 else "▼"
@@ -463,9 +481,17 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
                     week_marks[(row_idx, col)] = ("sig", t["direction"])
             ws2.append([
                 q.get("question_label", q["question"]) if i == 0 else "", opt,
+                overall.get(opt, 0.0),
                 *[q["by_bucket"].get(b, {}).get(opt, 0.0) for b in buckets],
                 "；".join(drift_weeks), "",
             ])
+        # 每题末行：样本量（整体 + 各桶有效样本量 n）
+        sizes_q = q.get("sizes", {})
+        ws2.append([
+            "", "样本量", overall_n,
+            *[sizes_q.get(b, 0) for b in buckets], "", "",
+        ])
+        sample_rows.add(ws2.max_row)
         end_row = ws2.max_row
         block_ranges.append((start_row, end_row))
         concl = conclusions.get(q["question"], "")
@@ -474,7 +500,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
             ws2.merge_cells(start_row=start_row, start_column=concl_col,
                             end_row=end_row, end_column=concl_col)
             ws2.cell(row=start_row, column=concl_col, value=concl)
-    _format_detail_sheet(ws2, len(buckets), block_ranges, week_marks)
+    _format_detail_sheet(ws2, len(buckets), block_ranges, week_marks, sample_rows)
 
     # ---- Sheet 3: 异动汇总 ----
     ws3 = wb.create_sheet("⚠️ 异动汇总")
@@ -515,6 +541,8 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     ws4.append(["样本不足桶(n<30)", "; ".join(findings["low_n_buckets"]) or "无"])
     ws4.append(["判异动门槛", "p<0.05 且（占比Δ≥5pp 或 均分Δ≥0.1）"])
     ws4.append(["检验方法", "均分:t检验/Mann-Whitney; 占比:两比例z; 单选整体:卡方"])
+    ws4.append(["整体列", "明细表 C 列为全样本合并后的整体占比（各期按样本量加权），作为各周/月对比的基线"])
+    ws4.append(["样本量行", "明细表每题末行标注该题各期及整体的有效样本量 n（该题实际作答人数）"])
     ws4.append(["明细表颜色", "逐题明细中，某周单元格相对前一周显著变化会着色：琥珀底+加粗=大幅异动(双门槛)，红/绿字=一般显著(升绿/降红)，灰字=无显著环比变化"])
     ws4.append(["免责", "样本不足桶仅供参考，不判异动"])
     _format_method_sheet(ws4)
@@ -523,10 +551,12 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     return {"status": "success", "output_path": output_path, "sheets": wb.sheetnames}
 
 
-def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None):
+def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None, sample_rows=None):
     """逐题异动明细：Slate + Indigo 设计系统（对齐文本分析 Excel 风格）。
-    深色表头 + 按题分块斑马纹 + 占比 DataBar + 逐周环比热力标注 + 异动周列 + 结论靛蓝卡片。
-    week_marks: {(row, col): (kind, direction)}，kind ∈ {'drift','sig'}，标注某周相对前一周的显著变化。"""
+    深色表头 + C列整体基线 + 按题分块斑马纹 + 占比 DataBar + 逐周环比热力标注
+    + 每题末行样本量 + 异动周列 + 结论靛蓝卡片。
+    week_marks: {(row, col): (kind, direction)}，kind ∈ {'drift','sig'}，标注某周相对前一周的显著变化。
+    sample_rows: set(行号)，各题"样本量"行（整数计数、不参与 DataBar）。"""
     import _styles as st
     from _styles import TextReportTheme as TR, Theme
     from openpyxl.styles import Font
@@ -534,10 +564,12 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None):
     from openpyxl.formatting.rule import DataBarRule
 
     week_marks = week_marks or {}
+    sample_rows = sample_rows or set()
     border = st.thin_border()
     max_col = ws.max_column
     max_row = ws.max_row
-    b_first, b_last = 3, 2 + n_buckets
+    overall_col = 3
+    b_first, b_last = 4, 3 + n_buckets
     drift_weeks_col, concl_col = b_last + 1, b_last + 2
 
     DRIFT_BG = "FEF3C7"   # amber-100 异动周高亮
@@ -568,6 +600,7 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None):
     # ---- 数据行 ----
     for r in range(2, max_row + 1):
         base = row_base.get(r, TR.WHITE)
+        is_sample = r in sample_rows
         ws.row_dimensions[r].height = 22
         for c in range(1, max_col + 1):
             cell = ws.cell(row=r, column=c)
@@ -576,13 +609,31 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None):
                 cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
                 cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
                 cell.alignment = top_left
-            elif c == 2:  # 选项
+            elif c == 2:  # 选项 / "样本量"标签
                 cell.fill = st.make_fill(base)
-                cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MAIN)
+                if is_sample:
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.TEXT_MUTE)
+                else:
+                    cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MAIN)
                 cell.alignment = left
-            elif b_first <= c <= b_last:  # 各周占比 + 逐周环比热力标注
-                cell.number_format = "0.0%"
+            elif c == overall_col:  # 整体基线列
                 cell.alignment = center
+                if is_sample:
+                    cell.number_format = "#,##0"
+                    cell.fill = st.make_fill(base)
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.TEXT_MUTE)
+                else:
+                    cell.number_format = "0.0%"
+                    cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
+                    cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
+            elif b_first <= c <= b_last:  # 各周占比 + 逐周环比热力标注 / 样本量
+                cell.alignment = center
+                if is_sample:
+                    cell.number_format = "#,##0"
+                    cell.fill = st.make_fill(base)
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
+                    continue
+                cell.number_format = "0.0%"
                 mark = week_marks.get((r, c))
                 if mark:
                     kind, direction = mark
@@ -607,11 +658,14 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None):
                 cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.INDIGO_DEEP)
                 cell.alignment = top_left
 
-    # ---- 占比列 DataBar（固定 0~1 刻度，跨题可比）----
-    if max_row >= 2:
-        for c in range(b_first, b_last + 1):
+    # ---- 占比列 DataBar（固定 0~1 刻度，跨题可比；每题数据行，排除样本量行）----
+    for s, e in block_ranges:
+        data_end = e - 1 if e in sample_rows else e  # 样本量行不画 DataBar
+        if data_end < s:
+            continue
+        for c in range(overall_col, b_last + 1):
             col = get_column_letter(c)
-            rng = f"{col}2:{col}{max_row}"
+            rng = f"{col}{s}:{col}{data_end}"
             rule = DataBarRule(start_type="num", start_value=0,
                                end_type="num", end_value=1,
                                color=TR.INDIGO_CHIP, showValue=True,
@@ -621,11 +675,12 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None):
     # ---- 列宽 / 冻结 ----
     ws.column_dimensions["A"].width = 34
     ws.column_dimensions["B"].width = 26
+    ws.column_dimensions[get_column_letter(overall_col)].width = 11
     for c in range(b_first, b_last + 1):
         ws.column_dimensions[get_column_letter(c)].width = 11
     ws.column_dimensions[get_column_letter(drift_weeks_col)].width = 30
     ws.column_dimensions[get_column_letter(concl_col)].width = 46
-    ws.freeze_panes = "C2"
+    ws.freeze_panes = "D2"
     ws.sheet_view.showGridLines = False
 
 

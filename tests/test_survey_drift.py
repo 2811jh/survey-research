@@ -246,6 +246,43 @@ def test_export_creates_four_sheets(tmp_path):
     assert "ℹ️ 方法与样本" in wb.sheetnames
 
 
+def test_detail_sheet_overall_column_and_sample_row(tmp_path):
+    """明细表 C 列=整体加权占比基线；每题末行=样本量（整体N + 各期n）。"""
+    findings = {
+        "granularity": "week", "time_col": "结束答题时间",
+        "buckets": ["W1", "W2"],
+        "bucket_sizes": {"W1": 60, "W2": 40},
+        "low_n_buckets": [], "metrics": [],
+        "questions": [{
+            "question": "Q7.活动评价（单选）", "type": "single_choice",
+            "question_label": "Q7.活动评价（单选）",
+            "options": ["满意", "一般"],
+            "by_bucket": {"W1": {"满意": 1.0, "一般": 0.0},
+                          "W2": {"满意": 0.5, "一般": 0.5}},
+            "sizes": {"W1": 60, "W2": 40},
+            "overall_test": {"test": "chi_square", "p": 0.001, "significant": True},
+            "adjacent_option_tests": [{"option": "满意", "from": "W1", "to": "W2",
+                "delta_pp": -50.0, "test": "two_prop_z", "p": 0.001,
+                "significant": True, "drift": True, "low_n": False, "direction": "down"}],
+            "drift": True, "low_n": False,
+        }],
+        "nps_col": None, "satisfaction_cols": [],
+    }
+    out = tmp_path / "report.xlsx"
+    survey_drift.export_excel(findings, {}, str(out))
+    ws = load_workbook(out)["📈 逐题异动明细"]
+    # 表头：A题目 B选项 C整体 D..桶 …
+    assert [ws.cell(1, c).value for c in range(1, 4)] == ["题目", "选项", "整体"]
+    assert ws.cell(1, 4).value == "W1" and ws.cell(1, 5).value == "W2"
+    # C 列整体占比（加权）：满意 = (60*1.0 + 40*0.5)/100 = 0.8
+    assert round(ws.cell(2, 3).value, 4) == 0.8
+    # 每题末行 = 样本量：整体 100，W1=60，W2=40
+    last = ws.max_row
+    assert ws.cell(last, 2).value == "样本量"
+    assert ws.cell(last, 3).value == 100
+    assert ws.cell(last, 4).value == 60 and ws.cell(last, 5).value == 40
+
+
 def test_summary_scope_all_includes_historical_drift(tmp_path):
     """scope=latest 只收录最新相邻期异动；scope=all 收录任意相邻期历史异动并标注时段。"""
     b = ["W1", "W2", "W3"]
