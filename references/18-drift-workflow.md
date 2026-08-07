@@ -63,7 +63,7 @@ python {SKILL_DIR}/scripts/survey_drift.py export \
 ## drift_findings.json 结构
 
 - 顶层：`granularity`、`time_col`、`buckets`（旧→新有序）、`bucket_sizes`、`low_n_buckets`、`metrics`、`questions`、`nps_col`、`satisfaction_cols`。
-- `metrics[]`：满意度均分（`type=satisfaction_mean`）、NPS（`type=nps`）。含 `by_bucket` 各期值、`adjacent` 相邻期检验（`delta`/`delta_pp`、`test`、`p`、`significant`、`drift`、`low_n`、`direction`）。
+- `metrics[]`：满意度均分（`type=satisfaction_mean`）、NPS（`type=nps`）。含 `by_bucket` 各期值、`adjacent` 相邻期检验（`delta`/`delta_pp`、`test`、`p`、`significant`、`drift`、`low_n`、`direction`）。**凡取值为 1~5 的五点量表单选题都会自动纳入 `metrics` 做均分显著性检验**（与 `satisfaction_cols` 关键词识别结果合并去重；`findings.satisfaction_cols` 记录最终纳入的全部均分题）。
 - `questions[]`：单选（含 `overall_test` 卡方）、多选（`overall_test=null`）。含 `by_bucket` 各期各选项占比、`adjacent_option_tests`（逐选项相邻期两比例 z）、题级 `drift`、`low_n`。
   - `question`：主键（单选=完整列名；多选=`Q\d+.` 根前缀）。**结论 conclusions.json 的键用 `question`**。
   - `question_label`：Excel 展示用完整题干（多选从子列还原冒号前部分，单选同 `question`）。写结论时可参考它理解题意，但键仍用 `question`。
@@ -80,7 +80,7 @@ conclusions.json 示例：
 
 | Sheet | 内容 |
 |-------|------|
-| 📊 指标总览 | 满意度均分、NPS 全时间线各期一列 + 最新期 vs 上期趋势标 ▲▼ + 是否显著 |
+| 📊 指标总览 | 满意度均分、NPS 全时间线各期一列 + 最新期 vs 上期趋势标 ▲▼ + 是否显著。**所有五点量表题（选项1~5）自动纳入并做相邻期均分显著性检验**（t 检验/Mann-Whitney），无需手动指定 `--satisfaction_cols` |
 | 📈 逐题异动明细 | 每题×各期占比（DataBar）+ **C 列「整体」基线**（全样本各期按样本量加权的整体占比，供各期对照）+ **单选/多选选项按整体占比降序排**（五点量表题保持 1~5 自然序）+ **逐周环比热力标注**（某周相对前一周显著变化则着色：琥珀底加粗=大幅异动、红/绿字=一般显著升降、灰字=无变化）+ 异动周列 + **每题末行「样本量」**（整体 N + 各期有效 n）+ **五点量表题再加「加权满意度」行**（Σ分值×人数/总样本量 = 1~5 均分，整体 + 各期）+ **AI 结论列** |
 | ⚠️ 异动汇总 | 被判异动的题目/指标：时段/变化项/方向/幅度/显著性/AI 结论。默认只列最新相邻期；`--summary-scope all` 列全时间线历史异动并含「时段」列 |
 | ℹ️ 方法与样本 | 分桶方式、各桶样本量、检验方法、双门槛阈值、样本不足清单、免责 |

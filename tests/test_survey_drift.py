@@ -156,6 +156,30 @@ def test_build_findings_structure(tmp_path):
     assert any(m["type"] == "satisfaction_mean" for m in findings["metrics"])
 
 
+def test_build_findings_auto_includes_five_point_scale_metric():
+    """五点量表单选题即使未被关键词识别为满意度，也应自动进指标做均分显著性检验。"""
+    scale = [5, 4, 3, 2, 1] * 8  # 40 行，取值覆盖 1~5
+    df = pd.DataFrame({
+        "结束答题时间": pd.to_datetime(["2026-04-06"] * 40 + ["2026-04-13"] * 40),
+        "Q4.回归意愿": scale + scale,
+        "Q3.性别": (["男"] * 20 + ["女"] * 20) * 2,
+    })
+    classification = {
+        "single_choice": ["Q4.回归意愿", "Q3.性别"],
+        "multi_choice": {}, "matrix_scale": {}, "text": [], "meta": ["结束答题时间"],
+    }
+    findings = survey_drift.build_findings(
+        df, classification, granularity="week", time_col="结束答题时间",
+        nps_col=None, satisfaction_cols=[], min_n=30)  # 不传满意度关键词
+    metric_cols = [m["source_col"] for m in findings["metrics"]]
+    assert "Q4.回归意愿" in metric_cols           # 五点量表被自动纳入
+    assert "Q3.性别" not in metric_cols            # 非量表单选不纳入
+    m = next(m for m in findings["metrics"] if m["source_col"] == "Q4.回归意愿")
+    assert m["type"] == "satisfaction_mean"
+    assert len(m["adjacent"]) == 1                # 相邻期做了均分显著性检验
+    assert "Q4.回归意愿" in findings["satisfaction_cols"]
+
+
 def test_analyze_cli_end_to_end(tmp_path):
     csv = tmp_path / "demo.csv"
     pd.DataFrame({

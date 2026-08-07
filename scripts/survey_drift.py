@@ -278,6 +278,25 @@ def load_df(file_path):
 
 # ===================== findings 组装 ===================== #
 
+def _five_point_scale_series(series):
+    """判断某列是否五点量表（取值均为 1~5 的整数编码）。用于把五点量表题
+    自动纳入 📊 指标总览 做均分显著性检验。NPS(0~10)、连续/非整数、二元题被排除。"""
+    non_null = series.dropna()
+    if len(non_null) == 0:
+        return False
+    vals = set()
+    for v in non_null.unique():
+        try:
+            fv = float(v)
+        except (ValueError, TypeError):
+            return False
+        iv = int(fv)
+        if fv != iv:
+            return False
+        vals.add(iv)
+    return bool(vals) and vals.issubset({1, 2, 3, 4, 5}) and max(vals) == 5 and len(vals) >= 4
+
+
 def _multi_choice_label(root, subcols):
     """从多选子列还原完整题干：取首个子列冒号前的部分（含 root）。
     如 'Q6.为什么回归？:游戏版本更新' → 'Q6.为什么回归？'；失败回退 root。"""
@@ -301,7 +320,11 @@ def build_findings(df, classification, granularity, time_col,
     low_n_buckets = [b for b, n in sizes_all.items() if n < min_n]
 
     metrics = []
-    for col in (satisfaction_cols or []):
+    # 指标集合 = 关键词识别的满意度题 ∪ 全部五点量表单选题（都要做均分显著性检验）
+    scale_cols = [c for c in classification.get("single_choice", [])
+                  if c in df.columns and _five_point_scale_series(df[c])]
+    metric_cols = list(dict.fromkeys((satisfaction_cols or []) + scale_cols))
+    for col in metric_cols:
         if col not in df.columns:
             continue
         by_bucket, _ = scale_means(df, col, labels, ordered)
@@ -368,7 +391,7 @@ def build_findings(df, classification, granularity, time_col,
         "granularity": granularity, "time_col": time_col,
         "buckets": ordered, "bucket_sizes": sizes_all, "low_n_buckets": low_n_buckets,
         "metrics": metrics, "questions": questions,
-        "nps_col": nps_col, "satisfaction_cols": satisfaction_cols or [],
+        "nps_col": nps_col, "satisfaction_cols": metric_cols,
     }
 
 
@@ -924,7 +947,9 @@ def _cmd_analyze(args):
         "low_n_buckets": findings["low_n_buckets"],
         "questions_total": len(findings["questions"]),
         "questions_with_drift": sum(1 for q in findings["questions"] if q["drift"]),
-        "findings_out": out, "nps_col": nps_col, "satisfaction_cols": sat_cols,
+        "metrics_total": len(findings["metrics"]),
+        "findings_out": out, "nps_col": nps_col,
+        "satisfaction_cols": findings["satisfaction_cols"],
     }
 
 
