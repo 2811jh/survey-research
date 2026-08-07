@@ -115,6 +115,22 @@ def test_multi_choice_rates():
     assert round(by_bucket[b0]["创造"], 2) == 1.0
 
 
+def test_multi_choice_base_excludes_unanswered():
+    """多选题样本量=答过此题的人(至少勾选一项)，跳过未触达该题的空行(逻辑门控题)。"""
+    df = pd.DataFrame({
+        "结束答题时间": pd.to_datetime(["2026-04-06"] * 4),
+        "Q25.MOBA:王者荣耀": [1, 1, None, None],   # 前2人答过；后2人未触达
+        "Q25.MOBA:英雄联盟": [1, 0, None, None],
+    })
+    labels, ordered = survey_drift.bucketize(df["结束答题时间"], "week")
+    subcols = ["Q25.MOBA:王者荣耀", "Q25.MOBA:英雄联盟"]
+    by_bucket, sizes = survey_drift.multi_choice_rates(df, subcols, "Q25.", labels, ordered)
+    b0 = ordered[0]
+    assert sizes[b0] == 2                           # 基数=2（非 4）
+    assert round(by_bucket[b0]["王者荣耀"], 2) == 1.0   # 2/2
+    assert round(by_bucket[b0]["英雄联盟"], 2) == 0.5   # 1/2
+
+
 def test_adjacent_prop_tests_flags_drift():
     # b0 满意=100%(n=60), b1 满意=50%(n=60) → 相邻期 z 检验显著且 >5pp
     by_bucket = {"b0": {"满意": 1.0}, "b1": {"满意": 0.5}}

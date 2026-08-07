@@ -141,8 +141,10 @@ def single_choice_props(df, col, label_series, ordered):
 def _is_selected(v):
     if pd.isna(v):
         return False
+    if isinstance(v, (int, float, np.integer, np.floating)):
+        return float(v) != 0.0
     s = str(v).strip()
-    return s not in ("", "0", "nan", "NaN", "None", "否", "未选择")
+    return s not in ("", "0", "0.0", "nan", "NaN", "None", "否", "未选择")
 
 
 def multi_choice_rates(df, subcols, root, label_series, ordered):
@@ -155,17 +157,19 @@ def multi_choice_rates(df, subcols, root, label_series, ordered):
         return s[len(root):].strip() if s.startswith(root) else s
 
     by_bucket, sizes = {}, {}
+    val_subcols = [sc for sc in subcols if "输入文本" not in str(sc)]
     for b in ordered:
         mask = _bucket_mask(label_series, b)
-        block = df.loc[mask, subcols]
-        n = len(block)
-        sizes[b] = n
+        block = df.loc[mask, val_subcols]
+        # 选择矩阵：逐格判定是否勾选（与交叉分析一致，按"答过此题的人"为基数）
+        selmat = pd.DataFrame({sc: block[sc].map(_is_selected) for sc in val_subcols},
+                              index=block.index)
+        base = int(selmat.any(axis=1).sum()) if val_subcols else 0  # 至少勾选一项=答过此题
+        sizes[b] = base
         rates = {}
-        for sc in subcols:
-            if "输入文本" in str(sc):
-                continue
-            sel = block[sc].apply(_is_selected).sum()
-            rates[opt_name(sc)] = float(sel / n) if n else 0.0
+        for sc in val_subcols:
+            sel = int(selmat[sc].sum())
+            rates[opt_name(sc)] = float(sel / base) if base else 0.0
         by_bucket[b] = rates
     return by_bucket, sizes
 
@@ -610,7 +614,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     ws4.append(["判异动门槛", "p<0.05 且（占比Δ≥5pp 或 均分Δ≥0.1）"])
     ws4.append(["检验方法", "均分:t检验/Mann-Whitney; 占比:两比例z; 单选整体:卡方"])
     ws4.append(["整体列", "明细表 C 列为全样本合并后的整体占比（各期按样本量加权），作为各周/月对比的基线"])
-    ws4.append(["样本量行", "明细表每题末行标注该题各期及整体的有效样本量 n（该题实际作答人数）"])
+    ws4.append(["样本量行", "明细表每题末行标注该题各期及整体的有效样本量 n（该题实际作答人数）；多选题基数=答过此题(至少勾选一项)的人数，与交叉分析一致，逻辑门控题不计未触达者"])
     ws4.append(["加权满意度行", "五点量表题(选项1~5)在样本量行下再加一行加权满意度=Σ(分值×人数)/总样本量(即1~5均分)"])
     ws4.append(["明细表颜色", "逐题明细中，某周单元格相对前一周显著变化会着色：琥珀底+加粗=大幅异动(双门槛)，红/绿字=一般显著(升绿/降红)，灰字=无显著环比变化"])
     ws4.append(["免责", "样本不足桶仅供参考，不判异动"])
