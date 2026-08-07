@@ -413,6 +413,27 @@ def _overall_props(q, buckets):
     return res, total
 
 
+def _five_point_scale_opts(options):
+    """判断是否五点量表题（选项均为 1~5 的整数）。是则返回 [(opt_str, 分值), ...]，否则 None。
+    NPS(0~10) 因 max>5 被排除，二元题因 max<5/取值不足被排除。"""
+    pairs = []
+    for o in options:
+        try:
+            iv = int(float(str(o)))
+        except (ValueError, TypeError):
+            return None
+        pairs.append((o, iv))
+    vals = {iv for _, iv in pairs}
+    if vals and vals.issubset({1, 2, 3, 4, 5}) and max(vals) == 5 and len(vals) >= 4:
+        return pairs
+    return None
+
+
+def _weighted_satisfaction(prop_map, scale_pairs):
+    """加权满意度（国际通用均分口径）：Σ(分值 × 该选项占比) = Σ(分值×人数)/总样本量。"""
+    return sum(score * prop_map.get(opt, 0.0) for opt, score in scale_pairs)
+
+
 def _trend_mark(delta, significant, is_pp):
     unit = "pp" if is_pp else "分"
     prec = 1 if is_pp else 2
@@ -456,6 +477,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     block_ranges = []          # (start_row, end_row) 每题一块（含样本量行），供分块斑马纹
     week_marks = {}            # (row, col) -> (kind, direction) 逐周环比标注
     sample_rows = set()        # 各题"样本量"行行号
+    weighted_rows = set()      # 五点量表题"加权满意度"行行号
     concl_col = 3 + len(buckets) + 2  # AI结论列号（题目/选项/整体 + 各桶 + 异动周 + AI）
     for q in findings["questions"]:
         opts = q["options"]
@@ -492,6 +514,16 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
             *[sizes_q.get(b, 0) for b in buckets], "", "",
         ])
         sample_rows.add(ws2.max_row)
+        # 五点量表题：样本量下再加一行加权满意度（1~5 均分，整体 + 各期）
+        scale_pairs = _five_point_scale_opts(opts)
+        if scale_pairs:
+            ws2.append([
+                "", "加权满意度",
+                _weighted_satisfaction(overall, scale_pairs),
+                *[_weighted_satisfaction(q["by_bucket"].get(b, {}), scale_pairs) for b in buckets],
+                "", "",
+            ])
+            weighted_rows.add(ws2.max_row)
         end_row = ws2.max_row
         block_ranges.append((start_row, end_row))
         concl = conclusions.get(q["question"], "")
@@ -500,7 +532,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
             ws2.merge_cells(start_row=start_row, start_column=concl_col,
                             end_row=end_row, end_column=concl_col)
             ws2.cell(row=start_row, column=concl_col, value=concl)
-    _format_detail_sheet(ws2, len(buckets), block_ranges, week_marks, sample_rows)
+    _format_detail_sheet(ws2, len(buckets), block_ranges, week_marks, sample_rows, weighted_rows)
 
     # ---- Sheet 3: 异动汇总 ----
     ws3 = wb.create_sheet("⚠️ 异动汇总")
@@ -543,6 +575,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     ws4.append(["检验方法", "均分:t检验/Mann-Whitney; 占比:两比例z; 单选整体:卡方"])
     ws4.append(["整体列", "明细表 C 列为全样本合并后的整体占比（各期按样本量加权），作为各周/月对比的基线"])
     ws4.append(["样本量行", "明细表每题末行标注该题各期及整体的有效样本量 n（该题实际作答人数）"])
+    ws4.append(["加权满意度行", "五点量表题(选项1~5)在样本量行下再加一行加权满意度=Σ(分值×人数)/总样本量(即1~5均分)"])
     ws4.append(["明细表颜色", "逐题明细中，某周单元格相对前一周显著变化会着色：琥珀底+加粗=大幅异动(双门槛)，红/绿字=一般显著(升绿/降红)，灰字=无显著环比变化"])
     ws4.append(["免责", "样本不足桶仅供参考，不判异动"])
     _format_method_sheet(ws4)
@@ -551,12 +584,14 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     return {"status": "success", "output_path": output_path, "sheets": wb.sheetnames}
 
 
-def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None, sample_rows=None):
+def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None,
+                         sample_rows=None, weighted_rows=None):
     """逐题异动明细：Slate + Indigo 设计系统（对齐文本分析 Excel 风格）。
     深色表头 + C列整体基线 + 按题分块斑马纹 + 占比 DataBar + 逐周环比热力标注
-    + 每题末行样本量 + 异动周列 + 结论靛蓝卡片。
+    + 每题末行样本量（五点量表再加一行加权满意度）+ 异动周列 + 结论靛蓝卡片。
     week_marks: {(row, col): (kind, direction)}，kind ∈ {'drift','sig'}，标注某周相对前一周的显著变化。
-    sample_rows: set(行号)，各题"样本量"行（整数计数、不参与 DataBar）。"""
+    sample_rows: set(行号)，各题"样本量"行（整数计数、不参与 DataBar）。
+    weighted_rows: set(行号)，五点量表"加权满意度"行（1~5 均分、不参与 DataBar）。"""
     import _styles as st
     from _styles import TextReportTheme as TR, Theme
     from openpyxl.styles import Font
@@ -565,6 +600,8 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None, samp
 
     week_marks = week_marks or {}
     sample_rows = sample_rows or set()
+    weighted_rows = weighted_rows or set()
+    special_rows = sample_rows | weighted_rows
     border = st.thin_border()
     max_col = ws.max_column
     max_row = ws.max_row
@@ -601,6 +638,7 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None, samp
     for r in range(2, max_row + 1):
         base = row_base.get(r, TR.WHITE)
         is_sample = r in sample_rows
+        is_weighted = r in weighted_rows
         ws.row_dimensions[r].height = 22
         for c in range(1, max_col + 1):
             cell = ws.cell(row=r, column=c)
@@ -609,16 +647,22 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None, samp
                 cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
                 cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
                 cell.alignment = top_left
-            elif c == 2:  # 选项 / "样本量"标签
+            elif c == 2:  # 选项 / "样本量" / "加权满意度" 标签
                 cell.fill = st.make_fill(base)
-                if is_sample:
+                if is_weighted:
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.INDIGO_MAIN)
+                elif is_sample:
                     cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.TEXT_MUTE)
                 else:
                     cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MAIN)
                 cell.alignment = left
             elif c == overall_col:  # 整体基线列
                 cell.alignment = center
-                if is_sample:
+                if is_weighted:
+                    cell.number_format = "0.00"
+                    cell.fill = st.make_fill(base)
+                    cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_MAIN)
+                elif is_sample:
                     cell.number_format = "#,##0"
                     cell.fill = st.make_fill(base)
                     cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.TEXT_MUTE)
@@ -626,8 +670,13 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None, samp
                     cell.number_format = "0.0%"
                     cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
                     cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
-            elif b_first <= c <= b_last:  # 各周占比 + 逐周环比热力标注 / 样本量
+            elif b_first <= c <= b_last:  # 各周占比 + 逐周环比热力标注 / 样本量 / 加权满意度
                 cell.alignment = center
+                if is_weighted:
+                    cell.number_format = "0.00"
+                    cell.fill = st.make_fill(base)
+                    cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_MAIN)
+                    continue
                 if is_sample:
                     cell.number_format = "#,##0"
                     cell.fill = st.make_fill(base)
@@ -658,9 +707,11 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None, samp
                 cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.INDIGO_DEEP)
                 cell.alignment = top_left
 
-    # ---- 占比列 DataBar（固定 0~1 刻度，跨题可比；每题数据行，排除样本量行）----
+    # ---- 占比列 DataBar（固定 0~1 刻度，跨题可比；每题数据行，排除样本量/加权满意度行）----
     for s, e in block_ranges:
-        data_end = e - 1 if e in sample_rows else e  # 样本量行不画 DataBar
+        data_end = e
+        while data_end >= s and data_end in special_rows:  # 尾部特殊行不画 DataBar
+            data_end -= 1
         if data_end < s:
             continue
         for c in range(overall_col, b_last + 1):

@@ -283,6 +283,52 @@ def test_detail_sheet_overall_column_and_sample_row(tmp_path):
     assert ws.cell(last, 4).value == 60 and ws.cell(last, 5).value == 40
 
 
+def test_five_point_scale_helpers():
+    pairs = survey_drift._five_point_scale_opts(["1", "2", "3", "4", "5"])
+    assert pairs is not None
+    assert dict(pairs) == {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5}
+    # NPS 0~10、二元、文本 → 非五点量表
+    assert survey_drift._five_point_scale_opts([str(i) for i in range(11)]) is None
+    assert survey_drift._five_point_scale_opts(["1", "5"]) is None
+    assert survey_drift._five_point_scale_opts(["满意", "一般"]) is None
+    # 加权满意度 = Σ(分值×占比)
+    props = {"1": 0.0, "2": 0.0, "3": 0.0, "4": 0.5, "5": 0.5}
+    assert round(survey_drift._weighted_satisfaction(props, pairs), 2) == 4.5
+
+
+def test_detail_sheet_weighted_satisfaction_row(tmp_path):
+    """五点量表题在样本量行下自动加一行加权满意度（1~5 均分）。"""
+    findings = {
+        "granularity": "week", "time_col": "结束答题时间",
+        "buckets": ["W1", "W2"], "bucket_sizes": {"W1": 40, "W2": 60},
+        "low_n_buckets": [], "metrics": [],
+        "questions": [{
+            "question": "Q1.整体满意度", "type": "single_choice",
+            "question_label": "Q1.整体满意度",
+            "options": ["1", "2", "3", "4", "5"],
+            "by_bucket": {
+                "W1": {"1": 0.0, "2": 0.0, "3": 0.0, "4": 0.0, "5": 1.0},  # 均分 5.0
+                "W2": {"1": 0.0, "2": 0.0, "3": 0.0, "4": 1.0, "5": 0.0},  # 均分 4.0
+            },
+            "sizes": {"W1": 40, "W2": 60},
+            "overall_test": None, "adjacent_option_tests": [],
+            "drift": False, "low_n": False,
+        }],
+        "nps_col": None, "satisfaction_cols": [],
+    }
+    out = tmp_path / "report.xlsx"
+    survey_drift.export_excel(findings, {}, str(out))
+    ws = load_workbook(out)["📈 逐题异动明细"]
+    last = ws.max_row
+    assert ws.cell(last, 2).value == "加权满意度"
+    # 整体 = (40*5 + 60*4)/100 = 4.4；W1=5.0；W2=4.0
+    assert round(ws.cell(last, 3).value, 2) == 4.4
+    assert round(ws.cell(last, 4).value, 2) == 5.0
+    assert round(ws.cell(last, 5).value, 2) == 4.0
+    # 上一行应为样本量
+    assert ws.cell(last - 1, 2).value == "样本量"
+
+
 def test_summary_scope_all_includes_historical_drift(tmp_path):
     """scope=latest 只收录最新相邻期异动；scope=all 收录任意相邻期历史异动并标注时段。"""
     b = ["W1", "W2", "W3"]
