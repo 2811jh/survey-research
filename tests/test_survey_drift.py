@@ -378,6 +378,15 @@ def test_detail_sheet_sorts_choice_by_overall(tmp_path):
                 "overall_test": None, "adjacent_option_tests": [],
                 "drift": False, "low_n": False,
             },
+            {  # 人口题(职业)：保持原顺序，不按占比重排
+                "question": "Q3.职业", "type": "single_choice",
+                "question_label": "Q3.您的职业是？",
+                "options": ["学生", "上班族", "自由职业"],
+                "by_bucket": {"W1": {"学生": 0.2, "上班族": 0.7, "自由职业": 0.1}},
+                "sizes": {"W1": 100},
+                "overall_test": None, "adjacent_option_tests": [],
+                "drift": False, "low_n": False,
+            },
         ],
         "nps_col": None, "satisfaction_cols": [],
     }
@@ -388,6 +397,10 @@ def test_detail_sheet_sorts_choice_by_overall(tmp_path):
     assert [ws.cell(r, 2).value for r in (2, 3, 4)] == ["C", "A", "B"]
     # 五点量表块：紧随其后（样本量行=第5行）从第6行起 = 1,2,3,4,5
     assert [ws.cell(r, 2).value for r in (6, 7, 8, 9, 10)] == ["1", "2", "3", "4", "5"]
+    # 人口题(职业)：样本量+加权行后，选项保持原顺序 学生/上班族/自由职业（不按占比重排）
+    demo = [ws.cell(r, 2).value for r in range(11, ws.max_row + 1)
+            if ws.cell(r, 2).value not in ("样本量", "加权满意度")]
+    assert demo[:3] == ["学生", "上班族", "自由职业"]
 
 
 def test_summary_scope_all_includes_historical_drift(tmp_path):

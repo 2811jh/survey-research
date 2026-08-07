@@ -457,6 +457,15 @@ def _weighted_satisfaction(prop_map, scale_pairs):
     return sum(score * prop_map.get(opt, 0.0) for opt, score in scale_pairs)
 
 
+_DEMOGRAPHIC_KEYS = ("性别", "年龄", "职业")
+
+
+def _is_demographic(label):
+    """人口统计题（性别/年龄/职业）——排序时保持选项原顺序，不按占比重排。"""
+    s = str(label)
+    return any(k in s for k in _DEMOGRAPHIC_KEYS)
+
+
 def _trend_mark(delta, significant, is_pp):
     unit = "pp" if is_pp else "分"
     prec = 1 if is_pp else 2
@@ -506,8 +515,9 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
         opts = q["options"]
         overall, overall_n = _overall_props(q, buckets)
         scale_pairs = _five_point_scale_opts(opts)
-        # 单选/多选按「整体」占比降序排；五点量表题保持 1~5 自然序
-        if q["type"] in ("single_choice", "multi_choice") and not scale_pairs:
+        # 单选/多选按「整体」占比降序排；五点量表题、人口题(性别/年龄/职业)保持原顺序
+        if (q["type"] in ("single_choice", "multi_choice") and not scale_pairs
+                and not _is_demographic(q.get("question_label", q["question"]))):
             opts = sorted(opts, key=lambda o: overall.get(o, 0.0), reverse=True)
         start_row = ws2.max_row + 1
         # 逐选项、逐"到达桶"的相邻期检验：{option: {to_bucket: test}}
