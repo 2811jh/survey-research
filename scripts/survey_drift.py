@@ -582,7 +582,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
                 "", "",
             ])
             weighted_rows.add(ws2.max_row)
-        # 人口题：若含「不愿意透露」，补一版剔除后归一化占比 + 剔除后样本量
+        # 人口题：若含「不愿意透露」，补一版剔除后归一化占比 + 剔除后样本量（同样做逐期异动检验）
         refuse = {o for o in q["options"] if _disp(o) == "不愿意透露"} if lmap else set()
         if is_demo and refuse:
             keep = [o for o in opts if o not in refuse]
@@ -594,12 +594,32 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
             base_ex = {b: int(round(sizes_q.get(b, 0)
                                     * (1.0 - sum(q["by_bucket"].get(b, {}).get(o, 0.0) for o in refuse))))
                        for b in buckets}
+            # 归一化后的相邻期两比例 z 检验（基数=剔除「不愿意透露」后的样本量）
+            norm_by_bucket = {b: {o: q["by_bucket"].get(b, {}).get(o, 0.0) / keep_sum_b[b]
+                                  for o in keep} for b in buckets}
+            norm_tests = adjacent_prop_tests(norm_by_bucket, base_ex, buckets)
+            norm_tests_by_opt = {}
+            for t in norm_tests:
+                norm_tests_by_opt.setdefault(t["option"], {})[t["to"]] = t
             ws2.append(["", "剔除「不愿意透露」后归一化", "", *["" for _ in buckets], "", ""])
             section_rows.add(ws2.max_row)
             for opt in keep:
+                row_idx = ws2.max_row + 1
+                drift_weeks = []
+                for bi in range(1, len(buckets)):
+                    t = norm_tests_by_opt.get(opt, {}).get(buckets[bi])
+                    if not t:
+                        continue
+                    col = 4 + bi
+                    if t.get("drift"):
+                        week_marks[(row_idx, col)] = ("drift", t["direction"])
+                        arrow = "▲" if t["delta_pp"] > 0 else "▼"
+                        drift_weeks.append(f"{buckets[bi]}{arrow}{t['delta_pp']:+.1f}pp")
+                    elif t.get("significant"):
+                        week_marks[(row_idx, col)] = ("sig", t["direction"])
                 ov = overall.get(opt, 0.0) / keep_sum_ov
-                row_vals = [q["by_bucket"].get(b, {}).get(opt, 0.0) / keep_sum_b[b] for b in buckets]
-                ws2.append(["", _disp(opt), ov, *row_vals, "", ""])
+                row_vals = [norm_by_bucket[b].get(opt, 0.0) for b in buckets]
+                ws2.append(["", _disp(opt), ov, *row_vals, "；".join(drift_weeks), ""])
             ws2.append(["", "样本量", overall_ex, *[base_ex.get(b, 0) for b in buckets], "", ""])
             sample_rows.add(ws2.max_row)
         end_row = ws2.max_row

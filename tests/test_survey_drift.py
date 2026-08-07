@@ -420,18 +420,19 @@ def test_detail_sheet_sorts_choice_by_overall(tmp_path):
 
 
 def test_detail_sheet_value_labels_and_normalized_block(tmp_path):
-    """人口题：编码→标签映射生效、按编码升序、并补一版剔除「不愿意透露」归一化占比+样本量。"""
+    """人口题：编码→标签映射生效、按编码升序、补剔除「不愿意透露」归一化占比+样本量，且归一化行也做异动检验。"""
     findings = {
         "granularity": "month", "time_col": "结束答题时间",
-        "buckets": ["M1"], "bucket_sizes": {"M1": 100},
+        "buckets": ["M1", "M2"], "bucket_sizes": {"M1": 1000, "M2": 1000},
         "low_n_buckets": [], "metrics": [],
         "questions": [{
             "question": "Q33.请问您的性别是？", "type": "single_choice",
             "question_label": "Q33.请问您的性别是？",
             "options": ["1", "2", "3"],
-            # 男40% 女40% 不愿意透露20%
-            "by_bucket": {"M1": {"1": 0.4, "2": 0.4, "3": 0.2}},
-            "sizes": {"M1": 100},
+            # M1: 男40 女40 拒20 → 归一 男/女=50/50；M2: 男20 女60 拒20 → 归一 25/75
+            "by_bucket": {"M1": {"1": 0.4, "2": 0.4, "3": 0.2},
+                          "M2": {"1": 0.2, "2": 0.6, "3": 0.2}},
+            "sizes": {"M1": 1000, "M2": 1000},
             "overall_test": None, "adjacent_option_tests": [],
             "drift": False, "low_n": False,
         }],
@@ -449,12 +450,16 @@ def test_detail_sheet_value_labels_and_normalized_block(tmp_path):
     assert col2[4] == "剔除「不愿意透露」后归一化"
     assert col2[5:7] == ["男", "女"]
     assert col2[7] == "样本量"
-    # 归一化占比：男 = 0.4/(0.4+0.4) = 0.5（norm 行为 row7/row8）
-    assert round(ws.cell(7, 3).value, 4) == 0.5
-    assert round(ws.cell(8, 3).value, 4) == 0.5
-    # 剔除「不愿意透露」后样本量 = 100 - 20 = 80（整体 + 各期，row9）
-    assert ws.cell(9, 3).value == 80
-    assert ws.cell(9, 4).value == 80
+    # 归一化占比：男(整体) = 0.3/(0.3+0.5) = 0.375（norm 行为 row7/row8）
+    assert round(ws.cell(7, 3).value, 4) == 0.375
+    assert round(ws.cell(8, 3).value, 4) == 0.625
+    # M2 归一化：男 = 0.2/0.8 = 0.25
+    assert round(ws.cell(7, 5).value, 4) == 0.25
+    # 剔除「不愿意透露」后样本量：整体 1600、各期 800
+    assert ws.cell(9, 3).value == 1600
+    assert ws.cell(9, 4).value == 800 and ws.cell(9, 5).value == 800
+    # 归一化行也做异动检验：男 50%→25% 大幅下降，异动周列(第6列)应标注
+    assert "▼" in str(ws.cell(7, 6).value) and "pp" in str(ws.cell(7, 6).value)
 
 
 def test_summary_scope_all_includes_historical_drift(tmp_path):
