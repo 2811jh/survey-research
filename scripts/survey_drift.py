@@ -15,6 +15,7 @@ Agent 写一句话结论，导出 4-Sheet Excel。
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import timedelta
 
@@ -331,11 +332,12 @@ def build_findings(df, classification, granularity, time_col,
     for col in metric_cols:
         if col not in df.columns:
             continue
-        by_bucket, _ = scale_means(df, col, labels, ordered)
+        by_bucket, sizes = scale_means(df, col, labels, ordered)
         adj = adjacent_mean_tests(df, col, labels, ordered, min_n)
         metrics.append({
             "name": f"{col} 均分", "type": "satisfaction_mean", "source_col": col,
-            "by_bucket": {b: round(by_bucket[b], 2) for b in ordered}, "adjacent": adj,
+            "by_bucket": {b: round(by_bucket[b], 2) for b in ordered},
+            "sizes": {b: int(sizes.get(b, 0)) for b in ordered}, "adjacent": adj,
         })
     if nps_col and nps_col in df.columns:
         by_bucket, sizes = {}, {}
@@ -359,7 +361,8 @@ def build_findings(df, classification, granularity, time_col,
             })
         metrics.append({
             "name": "NPS", "type": "nps", "source_col": nps_col,
-            "by_bucket": by_bucket, "adjacent": adj,
+            "by_bucket": by_bucket, "sizes": {b: int(sizes.get(b, 0)) for b in ordered},
+            "adjacent": adj,
         })
 
     questions = []
@@ -470,6 +473,12 @@ def _is_demographic(label):
     return any(k in s for k in _DEMOGRAPHIC_KEYS)
 
 
+def _qnum(key):
+    """从题目键提取题号用于排序（如 'Q35.职业' → 35；'Q8.' → 8）。无题号排最后。"""
+    m = re.match(r"\s*Q(\d+)", str(key))
+    return int(m.group(1)) if m else 10 ** 6
+
+
 def _trend_mark(delta, significant, is_pp):
     unit = "pp" if is_pp else "分"
     prec = 1 if is_pp else 2
@@ -494,8 +503,6 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
     ws1.title = "📊 指标总览"
     header = ["指标"] + buckets + ["最新vs上期", "是否显著"]
     ws1.append(header)
-    sizes = findings["bucket_sizes"]
-    ws1.append(["样本量"] + [sizes.get(b, 0) for b in buckets] + ["—", "—"])
     for m in findings["metrics"]:
         is_pp = m["type"] == "nps"
         row = [m["name"]] + [m["by_bucket"].get(b, "") for b in buckets]
@@ -507,6 +514,9 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
         else:
             row += ["—", "—"]
         ws1.append(row)
+        # 每个指标下方紧跟「样本量」行（该指标各期有效作答人数，格式同逐题异动明细）
+        m_sizes = m.get("sizes", {})
+        ws1.append(["样本量"] + [m_sizes.get(b, "") for b in buckets] + ["", ""])
     _format_overview_sheet(ws1, len(buckets))
 
     # ---- Sheet 2: 逐题异动明细 ----
@@ -518,7 +528,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
     weighted_rows = set()      # 五点量表题"加权满意度"行行号
     section_rows = set()       # 归一化子区块小标题行行号
     concl_col = 3 + len(buckets) + 2  # AI结论列号（题目/选项/整体 + 各桶 + 异动周 + AI）
-    for q in findings["questions"]:
+    for q in sorted(findings["questions"], key=lambda x: (_qnum(x["question"]), str(x["question"]))):
         qkey = q["question"]
         lmap = value_labels.get(qkey) or value_labels.get(q.get("question_label", qkey))
 
@@ -668,13 +678,47 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
     ws4.append(["项", "说明"])
     ws4.append(["分桶粒度", {"week": "按周", "month": "按月", "day": "按天"}.get(findings["granularity"])])
     ws4.append(["时间列", findings["time_col"]])
-    ws4.append(["各桶样本量", "; ".join(f"{b}={sizes.get(b,0)}" for b in buckets)])
+    ws4.append(["各桶样本量", "; ".join(f"{b}={findings['bucket_sizes'].get(b, 0)}" for b in buckets)])
     ws4.append(["样本不足桶(n<30)", "; ".join(findings["low_n_buckets"]) or "无"])
-    ws4.append(["判异动门槛", "p<0.05 且（占比Δ≥5pp 或 均分Δ≥0.1）"])
-    ws4.append(["检验方法", "均分:t检验/Mann-Whitney; 占比:两比例z; 单选整体:卡方"])
+    ws4.append(["判异动门槛",
+                "双门槛（须同时满足）：①统计显著 p<0.05；②效应量达标——占比类 |Δ|≥5pp，"
+                "均分类 |Δ|≥0.1 分。仅显著不达幅度、或达幅度不显著，均只记「显著」不判「异动」。"
+                "样本不足桶(任一期 n<30)不判异动。"])
+    ws4.append(["检验方法总览",
+                "占比类(单选各选项占比、多选各选项勾选率、人口题及其归一化占比)：两比例 z 检验；"
+                "单选题整体分布：卡方检验；均分类(五点量表加权满意度)：Welch t 检验(n≥30)/Mann-Whitney U(n<30)；"
+                "NPS：净推荐值差 + 推荐者比例两比例 z 检验。"])
+    ws4.append(["① 两比例 z 检验",
+                "适用：相邻两期某选项占比是否显著变化。理论：大样本下比例近似正态，"
+                "H0 两期总体比例相等。合并比例 p̂=(x1+x2)/(n1+n2)，"
+                "z=(p̂1−p̂2)/√(p̂(1−p̂)(1/n1+1/n2))，双尾取 p 值。"
+                "用于：所有单选/多选选项、人口题(Q33/34/35)及其剔除「不愿意透露」归一化后占比、NPS 推荐者比例。"])
+    ws4.append(["② 卡方检验(独立性)",
+                "适用：相邻两期「选项×期」列联表整体分布是否改变。理论：χ²=Σ(O−E)²/E，"
+                "E 为独立假设下期望频数，自由度=(选项数−1)。用于：每道单选题的整体分布是否异动"
+                "(明细表该题的整体判定)。"])
+    ws4.append(["③ Welch t 检验",
+                "适用：相邻两期均分(1~5 分)差异。理论：不假设两组方差相等的 t 检验，"
+                "t=(x̄1−x̄2)/√(s1²/n1+s2²/n2)，Welch–Satterthwaite 近似自由度。"
+                "用于：五点量表题(如 Q1/Q4/Q13/Q14/Q20)的加权满意度均分，样本量 n≥30 时采用。"])
+    ws4.append(["④ Mann-Whitney U 检验",
+                "适用：小样本(n<30)或非正态时的均分差异，作为 t 检验的稳健替代。理论：基于秩和的"
+                "非参数检验，比较两组分布位置。用于：五点量表题均分且某期 n<30 时自动改用。"])
+    ws4.append(["⑤ NPS(净推荐值)",
+                "定义：NPS=推荐者%(打 9~10 分)−贬损者%(打 0~6 分)，7~8 分为中立者。"
+                "异动检验：对相邻期推荐者比例做两比例 z 检验，幅度以 NPS 差(pp)判双门槛。"
+                "用于：指定了 --nps_col 的推荐意愿题。"])
+    ws4.append(["加权满意度(均分)公式",
+                "国际通用均分口径：加权满意度=Σ(分值×该分值人数)/总样本量=(1×n1+2×n2+3×n3+4×n4+5×n5)/N，"
+                "结果落在 1~5 分。用于：选项恰为 1~5 的五点量表单选题，明细表在样本量行下单列一行，"
+                "并纳入指标总览做均分显著性检验。"])
     ws4.append(["整体列", "明细表 C 列为全样本合并后的整体占比（各期按样本量加权），作为各周/月对比的基线"])
-    ws4.append(["样本量行", "明细表每题末行标注该题各期及整体的有效样本量 n（该题实际作答人数）；多选题基数=答过此题(至少勾选一项)的人数，与交叉分析一致，逻辑门控题不计未触达者"])
+    ws4.append(["样本量行", "指标总览每个指标下方、明细表每题末行均标注该指标/题各期及整体的有效样本量 n（实际作答人数）；"
+                          "多选题基数=答过此题(至少勾选一项)的人数，与交叉分析一致，逻辑门控题不计未触达者"])
     ws4.append(["加权满意度行", "五点量表题(选项1~5)在样本量行下再加一行加权满意度=Σ(分值×人数)/总样本量(即1~5均分)"])
+    ws4.append(["人口题归一化子区块", "性别/年龄/职业(Q33/34/35)在样本量行下追加「剔除「不愿意透露」后归一化」子区块："
+                              "对其余选项占比按剔除后基数重新归一(各期+整体)，样本量取剔除「不愿意透露」后的人数，"
+                              "并同样对每个选项做相邻期两比例 z 异动检验(热力标注+异动周)"])
     ws4.append(["明细表颜色", "逐题明细中，某周单元格相对前一周显著变化会着色：琥珀底+加粗=大幅异动(双门槛)，红/绿字=一般显著(升绿/降红)，灰字=无显著环比变化"])
     ws4.append(["免责", "样本不足桶仅供参考，不判异动"])
     _format_method_sheet(ws4)
@@ -755,10 +799,10 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None,
                     cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
                     cell.alignment = center
                 continue
-            if c == 1:  # 题目（合并列）
+            if c == 1:  # 题目（合并列）：垂直居中，跨整块显示
                 cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
                 cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
-                cell.alignment = top_left
+                cell.alignment = left
             elif c == 2:  # 选项 / "样本量" / "加权满意度" 标签
                 cell.fill = st.make_fill(base)
                 if is_weighted:
@@ -887,16 +931,27 @@ def _format_overview_sheet(ws, n_buckets):
         for c in range(1, ws.max_column + 1):
             cell = ws.cell(row=r, column=c)
             cell.border = border
-            if c == 1:  # 指标
-                cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
-                cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
-                cell.alignment = st.ALIGN_LEFT
-            elif c <= 1 + n_buckets:  # 各期数值
+            if c == 1:  # 指标 / 样本量 标签
+                if is_sample:
+                    cell.fill = st.make_fill(zebra)
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=TR.TEXT_MUTE)
+                    cell.alignment = st.ALIGN_LEFT
+                else:
+                    cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
+                    cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
+                    cell.alignment = st.ALIGN_LEFT
+            elif c <= 1 + n_buckets:  # 各期数值 / 样本量
                 cell.fill = st.make_fill(zebra)
-                cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.INDIGO_MAIN)
-                cell.alignment = st.ALIGN_CENTER
-                if isinstance(cell.value, (int, float)):
-                    cell.number_format = "#,##0" if is_sample else "0.00"
+                if is_sample:
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
+                    cell.alignment = st.ALIGN_CENTER
+                    if isinstance(cell.value, (int, float)):
+                        cell.number_format = "#,##0"
+                else:
+                    cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.INDIGO_MAIN)
+                    cell.alignment = st.ALIGN_CENTER
+                    if isinstance(cell.value, (int, float)):
+                        cell.number_format = "0.00"
             elif c == trend_col:  # 最新vs上期
                 cell.fill = st.make_fill(zebra)
                 cell.alignment = st.ALIGN_CENTER
@@ -982,21 +1037,25 @@ def _format_method_sheet(ws):
     from openpyxl.styles import Font
     border = st.thin_border()
     _slate_header(ws)
+    col_b_width = 96
     for r in range(2, ws.max_row + 1):
-        ws.row_dimensions[r].height = 28
-        zebra = TR.WHITE if r % 2 == 0 else TR.ZEBRA_ALT
         c1 = ws.cell(row=r, column=1)
         c1.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
         c1.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
         c1.alignment = st.ALIGN_LEFT
         c1.border = border
         c2 = ws.cell(row=r, column=2)
+        zebra = TR.WHITE if r % 2 == 0 else TR.ZEBRA_ALT
         c2.fill = st.make_fill(zebra)
         c2.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MAIN)
         c2.alignment = st.ALIGN_LEFT
         c2.border = border
-    ws.column_dimensions["A"].width = 20
-    ws.column_dimensions["B"].width = 72
+        # 依说明文本长度估算换行行数，设置行高，避免长条文本被截断
+        text = str(c2.value or "")
+        lines = max(1, -(-len(text) // (col_b_width - 6)))  # 每行约 col_b_width-6 个字符
+        ws.row_dimensions[r].height = max(28, lines * 16 + 6)
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = col_b_width
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
 

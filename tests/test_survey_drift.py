@@ -257,6 +257,7 @@ def test_export_creates_four_sheets(tmp_path):
         "metrics": [{
             "name": "Q1.整体满意度 均分", "type": "satisfaction_mean", "source_col": "Q1.整体满意度",
             "by_bucket": {"第15周（4.6-4.12）": 4.5, "第16周（4.13-4.19）": 3.0},
+            "sizes": {"第15周（4.6-4.12）": 38, "第16周（4.13-4.19）": 40},
             "adjacent": [{"from": "第15周（4.6-4.12）", "to": "第16周（4.13-4.19）",
                           "delta": -1.5, "test": "t_test", "p": 0.001,
                           "significant": True, "drift": True, "low_n": False, "direction": "down"}],
@@ -284,6 +285,31 @@ def test_export_creates_four_sheets(tmp_path):
     assert "📈 逐题异动明细" in wb.sheetnames
     assert "⚠️ 异动汇总" in wb.sheetnames
     assert "ℹ️ 方法与样本" in wb.sheetnames
+    # 指标总览：每个指标下方紧跟「样本量」行，格式=整数，值=该指标各期有效 n
+    ws1 = wb["📊 指标总览"]
+    assert ws1.cell(2, 1).value == "Q1.整体满意度 均分"
+    assert ws1.cell(3, 1).value == "样本量"
+    assert ws1.cell(3, 2).value == 38 and ws1.cell(3, 3).value == 40
+
+
+def test_detail_sheet_question_order_by_qnum(tmp_path):
+    """明细表题目按题号 Q1→Q35 升序排列（不受 findings 中原始顺序影响）。"""
+    def _q(name, opt="A"):
+        return {"question": name, "type": "single_choice", "question_label": name,
+                "options": [opt], "by_bucket": {"W1": {opt: 1.0}}, "sizes": {"W1": 50},
+                "overall_test": None, "adjacent_option_tests": [], "drift": False, "low_n": False}
+    findings = {
+        "granularity": "week", "time_col": "结束答题时间",
+        "buckets": ["W1"], "bucket_sizes": {"W1": 50}, "low_n_buckets": [], "metrics": [],
+        # 乱序输入：Q35, Q2, Q10
+        "questions": [_q("Q35.职业"), _q("Q2.渠道"), _q("Q10.时长")],
+        "nps_col": None, "satisfaction_cols": [],
+    }
+    out = tmp_path / "report.xlsx"
+    survey_drift.export_excel(findings, {}, str(out))
+    ws = load_workbook(out)["📈 逐题异动明细"]
+    titles = [ws.cell(r, 1).value for r in range(2, ws.max_row + 1) if ws.cell(r, 1).value]
+    assert titles == ["Q2.渠道", "Q10.时长", "Q35.职业"]
 
 
 def test_detail_sheet_overall_column_and_sample_row(tmp_path):
@@ -409,14 +435,16 @@ def test_detail_sheet_sorts_choice_by_overall(tmp_path):
     out = tmp_path / "report.xlsx"
     survey_drift.export_excel(findings, {}, str(out))
     ws = load_workbook(out)["📈 逐题异动明细"]
-    # 多选题块：第2~4行选项列 = C, A, B
-    assert [ws.cell(r, 2).value for r in (2, 3, 4)] == ["C", "A", "B"]
-    # 五点量表块：紧随其后（样本量行=第5行）从第6行起 = 1,2,3,4,5
-    assert [ws.cell(r, 2).value for r in (6, 7, 8, 9, 10)] == ["1", "2", "3", "4", "5"]
-    # 人口题(职业)：样本量+加权行后，选项保持原顺序 学生/上班族/自由职业（不按占比重排）
-    demo = [ws.cell(r, 2).value for r in range(11, ws.max_row + 1)
-            if ws.cell(r, 2).value not in ("样本量", "加权满意度")]
-    assert demo[:3] == ["学生", "上班族", "自由职业"]
+    # 题目按题号升序：Q1 → Q3 → Q9
+    labels = [ws.cell(r, 2).value for r in range(2, ws.max_row + 1)]
+    # Q1 五点量表块（首块）：保持 1,2,3,4,5，其后为样本量+加权满意度
+    assert labels[:5] == ["1", "2", "3", "4", "5"]
+    # Q9 多选题（末块）：按整体占比降序 C, A, B
+    assert labels[-4:-1] == ["C", "A", "B"]
+    # Q3 人口题(职业)：保持原顺序 学生/上班族/自由职业（不按占比重排）
+    assert "学生" in labels
+    demo_idx = labels.index("学生")
+    assert labels[demo_idx:demo_idx + 3] == ["学生", "上班族", "自由职业"]
 
 
 def test_detail_sheet_value_labels_and_normalized_block(tmp_path):
