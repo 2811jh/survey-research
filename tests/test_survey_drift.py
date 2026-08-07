@@ -419,6 +419,44 @@ def test_detail_sheet_sorts_choice_by_overall(tmp_path):
     assert demo[:3] == ["学生", "上班族", "自由职业"]
 
 
+def test_detail_sheet_value_labels_and_normalized_block(tmp_path):
+    """人口题：编码→标签映射生效、按编码升序、并补一版剔除「不愿意透露」归一化占比+样本量。"""
+    findings = {
+        "granularity": "month", "time_col": "结束答题时间",
+        "buckets": ["M1"], "bucket_sizes": {"M1": 100},
+        "low_n_buckets": [], "metrics": [],
+        "questions": [{
+            "question": "Q33.请问您的性别是？", "type": "single_choice",
+            "question_label": "Q33.请问您的性别是？",
+            "options": ["1", "2", "3"],
+            # 男40% 女40% 不愿意透露20%
+            "by_bucket": {"M1": {"1": 0.4, "2": 0.4, "3": 0.2}},
+            "sizes": {"M1": 100},
+            "overall_test": None, "adjacent_option_tests": [],
+            "drift": False, "low_n": False,
+        }],
+        "nps_col": None, "satisfaction_cols": [],
+    }
+    value_labels = {"Q33.请问您的性别是？": {"1": "男", "2": "女", "3": "不愿意透露"}}
+    out = tmp_path / "report.xlsx"
+    survey_drift.export_excel(findings, {}, str(out), value_labels=value_labels)
+    ws = load_workbook(out)["📈 逐题异动明细"]
+    col2 = [ws.cell(r, 2).value for r in range(2, ws.max_row + 1)]
+    # 编码替换为标签、按编码升序
+    assert col2[:3] == ["男", "女", "不愿意透露"]
+    assert col2[3] == "样本量"
+    # 归一化子区块小标题 + 剔除「不愿意透露」后的选项 + 剔除后样本量
+    assert col2[4] == "剔除「不愿意透露」后归一化"
+    assert col2[5:7] == ["男", "女"]
+    assert col2[7] == "样本量"
+    # 归一化占比：男 = 0.4/(0.4+0.4) = 0.5（norm 行为 row7/row8）
+    assert round(ws.cell(7, 3).value, 4) == 0.5
+    assert round(ws.cell(8, 3).value, 4) == 0.5
+    # 剔除「不愿意透露」后样本量 = 100 - 20 = 80（整体 + 各期，row9）
+    assert ws.cell(9, 3).value == 80
+    assert ws.cell(9, 4).value == 80
+
+
 def test_summary_scope_all_includes_historical_drift(tmp_path):
     """scope=latest 只收录最新相邻期异动；scope=all 收录任意相邻期历史异动并标注时段。"""
     b = ["W1", "W2", "W3"]

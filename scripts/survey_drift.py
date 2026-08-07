@@ -479,11 +479,13 @@ def _trend_mark(delta, significant, is_pp):
     return f"{arrow} {delta:+.{prec}f}{unit}"
 
 
-def export_excel(findings, conclusions, output_path, summary_scope="latest"):
+def export_excel(findings, conclusions, output_path, summary_scope="latest",
+                 value_labels=None):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from openpyxl import Workbook
 
     conclusions = conclusions or {}
+    value_labels = value_labels or {}
     buckets = findings["buckets"]
     wb = Workbook()
 
@@ -514,14 +516,30 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     week_marks = {}            # (row, col) -> (kind, direction) 逐周环比标注
     sample_rows = set()        # 各题"样本量"行行号
     weighted_rows = set()      # 五点量表题"加权满意度"行行号
+    section_rows = set()       # 归一化子区块小标题行行号
     concl_col = 3 + len(buckets) + 2  # AI结论列号（题目/选项/整体 + 各桶 + 异动周 + AI）
     for q in findings["questions"]:
+        qkey = q["question"]
+        lmap = value_labels.get(qkey) or value_labels.get(q.get("question_label", qkey))
+
+        def _disp(o, _m=lmap):
+            return _m.get(str(o), o) if _m else o
+
         opts = q["options"]
         overall, overall_n = _overall_props(q, buckets)
         scale_pairs = _five_point_scale_opts(opts)
-        # 单选/多选按「整体」占比降序排；五点量表题、人口题(性别/年龄/职业)保持原顺序
-        if (q["type"] in ("single_choice", "multi_choice") and not scale_pairs
-                and not _is_demographic(q.get("question_label", q["question"]))):
+        is_demo = _is_demographic(q.get("question_label", qkey))
+        if lmap and not scale_pairs:
+            # 有编码→标签映射（人口题）：按编码数字升序，保持问卷逻辑顺序
+            def _codekey(o):
+                try:
+                    return (0, int(float(o)))
+                except (ValueError, TypeError):
+                    return (1, str(o))
+            opts = sorted(opts, key=_codekey)
+        elif (q["type"] in ("single_choice", "multi_choice") and not scale_pairs
+                and not is_demo):
+            # 单选/多选按「整体」占比降序排；五点量表题、人口题保持原顺序
             opts = sorted(opts, key=lambda o: overall.get(o, 0.0), reverse=True)
         start_row = ws2.max_row + 1
         # 逐选项、逐"到达桶"的相邻期检验：{option: {to_bucket: test}}
@@ -543,7 +561,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
                 elif t.get("significant"):
                     week_marks[(row_idx, col)] = ("sig", t["direction"])
             ws2.append([
-                q.get("question_label", q["question"]) if i == 0 else "", opt,
+                q.get("question_label", qkey) if i == 0 else "", _disp(opt),
                 overall.get(opt, 0.0),
                 *[q["by_bucket"].get(b, {}).get(opt, 0.0) for b in buckets],
                 "；".join(drift_weeks), "",
@@ -564,15 +582,36 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
                 "", "",
             ])
             weighted_rows.add(ws2.max_row)
+        # 人口题：若含「不愿意透露」，补一版剔除后归一化占比 + 剔除后样本量
+        refuse = {o for o in q["options"] if _disp(o) == "不愿意透露"} if lmap else set()
+        if is_demo and refuse:
+            keep = [o for o in opts if o not in refuse]
+            keep_sum_ov = sum(overall.get(o, 0.0) for o in keep) or 1.0
+            keep_sum_b = {b: (sum(q["by_bucket"].get(b, {}).get(o, 0.0) for o in keep) or 1.0)
+                          for b in buckets}
+            overall_refuse_p = sum(overall.get(o, 0.0) for o in refuse)
+            overall_ex = int(round(overall_n * (1.0 - overall_refuse_p)))
+            base_ex = {b: int(round(sizes_q.get(b, 0)
+                                    * (1.0 - sum(q["by_bucket"].get(b, {}).get(o, 0.0) for o in refuse))))
+                       for b in buckets}
+            ws2.append(["", "剔除「不愿意透露」后归一化", "", *["" for _ in buckets], "", ""])
+            section_rows.add(ws2.max_row)
+            for opt in keep:
+                ov = overall.get(opt, 0.0) / keep_sum_ov
+                row_vals = [q["by_bucket"].get(b, {}).get(opt, 0.0) / keep_sum_b[b] for b in buckets]
+                ws2.append(["", _disp(opt), ov, *row_vals, "", ""])
+            ws2.append(["", "样本量", overall_ex, *[base_ex.get(b, 0) for b in buckets], "", ""])
+            sample_rows.add(ws2.max_row)
         end_row = ws2.max_row
         block_ranges.append((start_row, end_row))
-        concl = conclusions.get(q["question"], "")
+        concl = conclusions.get(qkey, "")
         if end_row >= start_row:
             ws2.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
             ws2.merge_cells(start_row=start_row, start_column=concl_col,
                             end_row=end_row, end_column=concl_col)
             ws2.cell(row=start_row, column=concl_col, value=concl)
-    _format_detail_sheet(ws2, len(buckets), block_ranges, week_marks, sample_rows, weighted_rows)
+    _format_detail_sheet(ws2, len(buckets), block_ranges, week_marks,
+                         sample_rows, weighted_rows, section_rows)
 
     # ---- Sheet 3: 异动汇总 ----
     ws3 = wb.create_sheet("⚠️ 异动汇总")
@@ -625,13 +664,14 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
 
 
 def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None,
-                         sample_rows=None, weighted_rows=None):
+                         sample_rows=None, weighted_rows=None, section_rows=None):
     """逐题异动明细：Slate + Indigo 设计系统（对齐文本分析 Excel 风格）。
     深色表头 + C列整体基线 + 按题分块斑马纹 + 占比 DataBar + 逐周环比热力标注
     + 每题末行样本量（五点量表再加一行加权满意度）+ 异动周列 + 结论靛蓝卡片。
     week_marks: {(row, col): (kind, direction)}，kind ∈ {'drift','sig'}，标注某周相对前一周的显著变化。
     sample_rows: set(行号)，各题"样本量"行（整数计数、不参与 DataBar）。
-    weighted_rows: set(行号)，五点量表"加权满意度"行（1~5 均分、不参与 DataBar）。"""
+    weighted_rows: set(行号)，五点量表"加权满意度"行（1~5 均分、不参与 DataBar）。
+    section_rows: set(行号)，归一化子区块小标题行（如"剔除「不愿意透露」后归一化"）。"""
     import _styles as st
     from _styles import TextReportTheme as TR, Theme
     from openpyxl.styles import Font
@@ -641,7 +681,8 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None,
     week_marks = week_marks or {}
     sample_rows = sample_rows or set()
     weighted_rows = weighted_rows or set()
-    special_rows = sample_rows | weighted_rows
+    section_rows = section_rows or set()
+    special_rows = sample_rows | weighted_rows | section_rows
     border = st.thin_border()
     max_col = ws.max_column
     max_row = ws.max_row
@@ -679,10 +720,21 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None,
         base = row_base.get(r, TR.WHITE)
         is_sample = r in sample_rows
         is_weighted = r in weighted_rows
+        is_section = r in section_rows
         ws.row_dimensions[r].height = 22
         for c in range(1, max_col + 1):
             cell = ws.cell(row=r, column=c)
             cell.border = border
+            if is_section and c not in (1, concl_col):  # 归一化子区块小标题行
+                cell.fill = st.make_fill(TR.NOTE_BG)
+                if c == 2:
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True,
+                                     italic=True, color=TR.INDIGO_MAIN)
+                    cell.alignment = left
+                else:
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
+                    cell.alignment = center
+                continue
             if c == 1:  # 题目（合并列）
                 cell.fill = st.make_fill(TR.INDIGO_ACCENT_BG)
                 cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
@@ -747,21 +799,23 @@ def _format_detail_sheet(ws, n_buckets, block_ranges=None, week_marks=None,
                 cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.INDIGO_DEEP)
                 cell.alignment = top_left
 
-    # ---- 占比列 DataBar（固定 0~1 刻度，跨题可比；每题数据行，排除样本量/加权满意度行）----
+    # ---- 占比列 DataBar（固定 0~1 刻度，跨题可比；每题占比行的连续区段，排除样本量/加权/小标题行）----
     for s, e in block_ranges:
-        data_end = e
-        while data_end >= s and data_end in special_rows:  # 尾部特殊行不画 DataBar
-            data_end -= 1
-        if data_end < s:
-            continue
-        for c in range(overall_col, b_last + 1):
-            col = get_column_letter(c)
-            rng = f"{col}{s}:{col}{data_end}"
-            rule = DataBarRule(start_type="num", start_value=0,
-                               end_type="num", end_value=1,
-                               color=TR.INDIGO_CHIP, showValue=True,
-                               minLength=0, maxLength=100)
-            ws.conditional_formatting.add(rng, rule)
+        run_start = None
+        for r in range(s, e + 2):  # e+1 作哨兵，冲刷末段连续区
+            is_data = (r <= e) and (r not in special_rows)
+            if is_data and run_start is None:
+                run_start = r
+            elif not is_data and run_start is not None:
+                for c in range(overall_col, b_last + 1):
+                    col = get_column_letter(c)
+                    rng = f"{col}{run_start}:{col}{r - 1}"
+                    rule = DataBarRule(start_type="num", start_value=0,
+                                       end_type="num", end_value=1,
+                                       color=TR.INDIGO_CHIP, showValue=True,
+                                       minLength=0, maxLength=100)
+                    ws.conditional_formatting.add(rng, rule)
+                run_start = None
 
     # ---- 列宽 / 冻结 ----
     ws.column_dimensions["A"].width = 34
@@ -974,10 +1028,21 @@ def _cmd_export(args):
     if args.conclusions:
         with open(args.conclusions, encoding="utf-8") as f:
             conclusions = json.load(f)
+    # 编码→标签映射：显式 --value-labels 优先，否则自动探测 findings 同目录的 value_labels.json
+    value_labels = None
+    vl_path = args.value_labels
+    if not vl_path:
+        cand = os.path.join(os.path.dirname(os.path.abspath(args.findings)), "value_labels.json")
+        if os.path.exists(cand):
+            vl_path = cand
+    if vl_path and os.path.exists(vl_path):
+        with open(vl_path, encoding="utf-8") as f:
+            value_labels = json.load(f)
     out = args.output_path or os.path.join(
         os.path.dirname(os.path.abspath(args.findings)),
         default_output_filename(findings["granularity"]))
-    return export_excel(findings, conclusions, out, summary_scope=args.summary_scope)
+    return export_excel(findings, conclusions, out, summary_scope=args.summary_scope,
+                        value_labels=value_labels)
 
 
 def main():
@@ -997,6 +1062,8 @@ def main():
     pe.add_argument("--findings", required=True)
     pe.add_argument("--conclusions", default=None)
     pe.add_argument("--output_path", default=None)
+    pe.add_argument("--value-labels", dest="value_labels", default=None,
+                    help="编码→标签映射 JSON（{题目:{编码:标签}}）；缺省自动探测 findings 同目录 value_labels.json")
     pe.add_argument("--summary-scope", dest="summary_scope",
                     choices=["latest", "all"], default="latest",
                     help="异动汇总范围：latest=仅最新相邻期（默认）；all=全时间线任意相邻期")
