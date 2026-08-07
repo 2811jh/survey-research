@@ -329,6 +329,43 @@ def test_detail_sheet_weighted_satisfaction_row(tmp_path):
     assert ws.cell(last - 1, 2).value == "样本量"
 
 
+def test_detail_sheet_sorts_choice_by_overall(tmp_path):
+    """单选/多选按「整体」占比降序排；五点量表题保持 1~5 自然序。"""
+    findings = {
+        "granularity": "week", "time_col": "结束答题时间",
+        "buckets": ["W1"], "bucket_sizes": {"W1": 100},
+        "low_n_buckets": [], "metrics": [],
+        "questions": [
+            {  # 多选题：整体 C > A > B，应排序为 C, A, B
+                "question": "Q9.喜欢的模式", "type": "multi_choice",
+                "question_label": "Q9.喜欢的模式",
+                "options": ["A", "B", "C"],
+                "by_bucket": {"W1": {"A": 0.5, "B": 0.2, "C": 0.8}},
+                "sizes": {"W1": 100},
+                "overall_test": None, "adjacent_option_tests": [],
+                "drift": False, "low_n": False,
+            },
+            {  # 五点量表：保持 1..5 顺序，不因占比重排
+                "question": "Q1.满意度", "type": "single_choice",
+                "question_label": "Q1.满意度",
+                "options": ["1", "2", "3", "4", "5"],
+                "by_bucket": {"W1": {"1": 0.4, "2": 0.1, "3": 0.1, "4": 0.1, "5": 0.3}},
+                "sizes": {"W1": 100},
+                "overall_test": None, "adjacent_option_tests": [],
+                "drift": False, "low_n": False,
+            },
+        ],
+        "nps_col": None, "satisfaction_cols": [],
+    }
+    out = tmp_path / "report.xlsx"
+    survey_drift.export_excel(findings, {}, str(out))
+    ws = load_workbook(out)["📈 逐题异动明细"]
+    # 多选题块：第2~4行选项列 = C, A, B
+    assert [ws.cell(r, 2).value for r in (2, 3, 4)] == ["C", "A", "B"]
+    # 五点量表块：紧随其后（样本量行=第5行）从第6行起 = 1,2,3,4,5
+    assert [ws.cell(r, 2).value for r in (6, 7, 8, 9, 10)] == ["1", "2", "3", "4", "5"]
+
+
 def test_summary_scope_all_includes_historical_drift(tmp_path):
     """scope=latest 只收录最新相邻期异动；scope=all 收录任意相邻期历史异动并标注时段。"""
     b = ["W1", "W2", "W3"]

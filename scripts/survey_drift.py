@@ -482,6 +482,10 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
     for q in findings["questions"]:
         opts = q["options"]
         overall, overall_n = _overall_props(q, buckets)
+        scale_pairs = _five_point_scale_opts(opts)
+        # 单选/多选按「整体」占比降序排；五点量表题保持 1~5 自然序
+        if q["type"] in ("single_choice", "multi_choice") and not scale_pairs:
+            opts = sorted(opts, key=lambda o: overall.get(o, 0.0), reverse=True)
         start_row = ws2.max_row + 1
         # 逐选项、逐"到达桶"的相邻期检验：{option: {to_bucket: test}}
         tests_by_opt = {}
@@ -515,7 +519,6 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest"):
         ])
         sample_rows.add(ws2.max_row)
         # 五点量表题：样本量下再加一行加权满意度（1~5 均分，整体 + 各期）
-        scale_pairs = _five_point_scale_opts(opts)
         if scale_pairs:
             ws2.append([
                 "", "加权满意度",
