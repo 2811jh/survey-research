@@ -878,79 +878,89 @@ def _format_crosstab_sheet(ws, is_percent=False, n_index_cols=2, has_total_col=T
     ws.sheet_view.showGridLines = False
 
 
-def _apply_diff_heatmap(ws, percent_df, col_labels, start_row=2, n_index_cols=2):
-    """
-    列百分比 sheet 差异热力标注。
+def _apply_significance_heatmap(ws, percent_df, col_labels, significance_matrix,
+                                 start_row=2, n_index_cols=2):
+    """列百分比 sheet 显著性着色 + DataBar。
 
-    逐选项行（排除总计行）计算跨分组的 max%-min%（仅非总计列）。
-    delta >= 5pp：
-      - max 值单元格：amber-100 底 + indigo-700 粗体字
-      - min 值单元格：slate-50 底 + slate-400 字
-    delta < 5pp：保持原样式（斑马 + TEXT_SUB）。
+    对每个分组值列的每个选项单元格：
+    - 显著且 up: amber-100 底 + green-800 字 ↑ + DataBar
+    - 显著且 down: amber-100 底 + red-700 字 ↓ + DataBar
+    - 非显著: 保持斑马 + slate-600 字
+    - 总计列: indigo-100 底（基准标识）
     """
-    if percent_df is None or percent_df.empty:
+    if not significance_matrix or percent_df is None or percent_df.empty:
         return
 
     border = thin_border()
-    non_total_cols = [c for c in col_labels if not str(c).endswith("\n总计")]
-
-    # 找出哪些行是数据行（排除"总计"行），并保留其在 DataFrame 中的 (问题,选项) 索引
     max_row = ws.max_row
+    max_col = ws.max_column
     total_rows = _find_total_rows(ws, max_row, n_index_cols)
 
-    # 建立 ws 行号 -> percent_df (问题,选项) 的映射
-    # percent_df 的 index 顺序 == ws 数据行顺序（从 start_row 起）
+    # 总计列标 indigo-100 底
+    for col_idx, label in enumerate(col_labels, start=n_index_cols + 1):
+        if str(label).endswith("\n总计"):
+            for r in range(1, max_row + 1):
+                cell = ws.cell(row=r, column=col_idx)
+                cell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+
+    # 建行映射：ws 行号 -> (dim, group_col_value, option)
+    # significance_matrix 结构: {dim: {group_col_value: {option: info}}}
+    # group_col_value 是去掉 \n 前缀的分组值（如 "男"），需与 col_labels 匹配
     df_rows = list(percent_df.index)
-    ws_row_to_idx = {}
-    df_pointer = 0
-    for row_idx in range(start_row, max_row + 1):
-        if row_idx in total_rows:
+    ws_row_to_info = {}
+    for i, idx in enumerate(df_rows):
+        ws_row = start_row + i
+        if ws_row in total_rows:
             continue
-        if df_pointer < len(df_rows):
-            ws_row_to_idx[row_idx] = df_rows[df_pointer]
-            df_pointer += 1
-
-    # 列标签 -> ws 列号映射（数据从 n_index_cols+1 起）
-    col_to_ws_col = {}
-    for ci, label in enumerate(col_labels, start=1):
-        col_to_ws_col[label] = n_index_cols + ci
-
-    for row_idx, df_idx in ws_row_to_idx.items():
-        try:
-            row_vals = percent_df.loc[df_idx, non_total_cols].astype(float)
-        except (KeyError, ValueError, TypeError):
+        option = idx[1] if isinstance(idx, tuple) else idx
+        option_str = str(option)
+        if option_str in ("总计", "合计", "Total"):
             continue
-        if row_vals.empty:
-            continue
+        # 遍历 significance_matrix 找匹配的 (dim, group_col_value)
+        for dim, groups in significance_matrix.items():
+            for group_col_value, options in groups.items():
+                if option_str in options:
+                    ws_row_to_info[ws_row] = (dim, group_col_value, option_str)
 
-        max_val = float(row_vals.max())
-        min_val = float(row_vals.min())
-        delta = max_val - min_val
+    # 着色
+    amber_fill = make_fill(_DRIFT_BG)  # FEF3C7
+    for ws_row, (dim, group_col_value, option) in ws_row_to_info.items():
+        info = significance_matrix[dim][group_col_value][option]
+        # 找 group_col_value 对应的列号
+        # col_labels 可能是 "Q33.性别\n男" 或裸 "男"——匹配 \n 后的部分
+        for col_idx, label in enumerate(col_labels, start=n_index_cols + 1):
+            label_str = str(label)
+            label_value = label_str.split("\n")[-1] if "\n" in label_str else label_str
+            if label_value == group_col_value or label_str == group_col_value:
+                cell = ws.cell(row=ws_row, column=col_idx)
+                if info["significant"]:
+                    cell.fill = amber_fill
+                    current_val = cell.value
+                    if info["direction"] == "up":
+                        cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_UP_FONT)
+                        if current_val and "↑" not in str(current_val):
+                            cell.value = f"{current_val} ↑"
+                    else:
+                        cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_DOWN_FONT)
+                        if current_val and "↓" not in str(current_val):
+                            cell.value = f"{current_val} ↓"
+                break
 
-        if delta < DIFF_THRESHOLD:
-            continue
-
-        # 找出等于 max / min 的列（可能多个并列，取第一个）
-        max_cols = [c for c in non_total_cols if abs(float(row_vals[c]) - max_val) < 1e-9]
-        min_cols = [c for c in non_total_cols if abs(float(row_vals[c]) - min_val) < 1e-9]
-
-        for label in max_cols:
-            cidx = col_to_ws_col.get(label)
-            if cidx is None:
+    # DataBar：对所有非总计数据单元格加 indigo DataBar（刻度 0~1）
+    non_total_rows = [r for r in range(start_row, max_row + 1) if r not in total_rows]
+    if non_total_rows:
+        for col_idx, label in enumerate(col_labels, start=n_index_cols + 1):
+            if str(label).endswith("\n总计"):
                 continue
-            cell = ws.cell(row=row_idx, column=cidx)
-            cell.fill = make_fill(_DRIFT_BG)
-            cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_MAIN)
-            cell.border = border
-
-        for label in min_cols:
-            cidx = col_to_ws_col.get(label)
-            if cidx is None:
-                continue
-            cell = ws.cell(row=row_idx, column=cidx)
-            cell.fill = make_fill(_MIN_BG)
-            cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MUTE)
-            cell.border = border
+            col_letter = get_column_letter(col_idx)
+            data_range = f"{col_letter}{min(non_total_rows)}:{col_letter}{max(non_total_rows)}"
+            rule = DataBarRule(
+                start_type='num', start_value=0,
+                end_type='num', end_value=1,
+                color=TR.INDIGO_CHIP, showValue=True,
+                minLength=0, maxLength=100,
+            )
+            ws.conditional_formatting.add(data_range, rule)
 
 
 def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
@@ -1075,10 +1085,11 @@ def export_crosstab_excel(
         _format_crosstab_sheet(writer.sheets['交叉分析'], is_percent=False)
         writer.sheets['交叉分析'].sheet_properties.tabColor = TR.TITLE_BG
 
-        # Sheet 2: 列百分比（含差异热力标注）
+        # Sheet 2: 列百分比 — 显著性着色 + DataBar
         percent_df.to_excel(writer, sheet_name='列百分比', merge_cells=True)
         _format_crosstab_sheet(writer.sheets['列百分比'], is_percent=True)
-        _apply_diff_heatmap(writer.sheets['列百分比'], percent_df, col_labels)
+        _apply_significance_heatmap(writer.sheets['列百分比'], percent_df, col_labels,
+                                     significance_matrix, start_row=2, n_index_cols=2)
         writer.sheets['列百分比'].sheet_properties.tabColor = TR.INDIGO_CHIP
 
         # Sheet 3: 得分分析（如有）
