@@ -33,10 +33,21 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from load_and_classify import classify_columns
 from _styles import (
-    format_data_sheet, format_score_sheet,
-    Theme, header_fill, header_font, body_font,
-    thin_border, make_fill, ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT,
+    Theme, TextReportTheme as TR,
+    thin_border, make_fill,
+    ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT, ALIGN_TOP_LEFT,
 )
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.formatting.rule import DataBarRule
+
+
+# ---- 漂移分析视觉系统色板（与 survey_drift.py 一致）----
+_UP_FONT = "1E7D32"    # green-800 升 / max 高亮字色
+_DOWN_FONT = "C0392B"  # red-700 降 / min 弱化字色
+_DRIFT_BG = "FEF3C7"   # amber-100 max 单元格高亮底
+_MIN_BG = "F8FAFC"     # slate-50 min 单元格弱化底
+DIFF_THRESHOLD = 0.05  # 5pp 视为显著差异
 
 
 # ========================================================================= #
@@ -603,15 +614,299 @@ def get_crosstab_summary(ct_result: dict) -> dict:
 
 
 # ========================================================================= #
-#                      Excel 导出
+#                      Excel 导出 (Slate + Indigo 设计系统)
 # ========================================================================= #
+
+def _find_total_rows(ws, max_row, n_index_cols):
+    """识别索引列含"总计/合计/Total"的行号集合。"""
+    total_rows = set()
+    for row_idx in range(2, max_row + 1):
+        for ic in range(1, n_index_cols + 1):
+            val = ws.cell(row=row_idx, column=ic).value
+            if val and str(val).strip() in ("总计", "合计", "Total"):
+                total_rows.add(row_idx)
+                break
+    return total_rows
+
+
+def _format_crosstab_sheet(ws, is_percent=False, n_index_cols=2, has_total_col=True):
+    """
+    交叉分析 sheet 格式化（Slate + Indigo 风格，对齐 survey_drift 明细表）。
+
+    - 表头：slate-800 底 + 白字粗体，行高 38
+    - 索引列（题目/选项）：indigo-100 底 + indigo-900 粗体左对齐
+    - 总计行：indigo-100 底 + indigo-900 粗体（与索引列同视觉层级）
+    - 数据行：斑马纹（white / slate-100），TEXT_SUB 字色
+    - DataBar：indigo-600，percent 固定 0~1 / freq 固定 0~max
+    - 百分比格式 0.0% / 频数 0
+    - freeze_panes C2，showGridLines False
+    """
+    max_row = ws.max_row
+    max_col = ws.max_column
+    border = thin_border()
+    total_rows = _find_total_rows(ws, max_row, n_index_cols)
+
+    # ---- 表头（第1行）----
+    ws.row_dimensions[1].height = 38
+    for col_idx in range(1, max_col + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.fill = make_fill(TR.TITLE_BG)
+        cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
+        cell.alignment = ALIGN_CENTER
+        cell.border = border
+
+    # ---- 数据行 ----
+    data_seq = 0
+    for row_idx in range(2, max_row + 1):
+        ws.row_dimensions[row_idx].height = 22
+        is_total_row = row_idx in total_rows
+        if not is_total_row:
+            data_seq += 1
+        zebra = TR.WHITE if data_seq % 2 == 1 else TR.ZEBRA_ALT
+
+        for col_idx in range(1, max_col + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = border
+
+            if is_total_row:
+                # 总计行：与索引列同视觉层级（indigo-100 底 + indigo-900 字）
+                cell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+                cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
+                if col_idx <= n_index_cols:
+                    cell.alignment = ALIGN_LEFT
+                else:
+                    cell.alignment = ALIGN_CENTER
+                    if is_percent:
+                        cell.number_format = '0.0%'
+                    else:
+                        cell.number_format = '#,##0'
+            elif col_idx <= n_index_cols:
+                # 索引列（题目/选项）
+                cell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+                cell.font = Font(name=Theme.FONT_NAME, size=10,
+                                bold=(col_idx == 1), color=TR.INDIGO_DEEP)
+                cell.alignment = ALIGN_LEFT
+            else:
+                # 数据列
+                cell.fill = make_fill(zebra)
+                cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_SUB)
+                cell.alignment = ALIGN_CENTER
+                if is_percent:
+                    cell.number_format = '0.0%'
+                else:
+                    cell.number_format = '#,##0'
+
+    # ---- DataBar（indigo-600，排除总计行）----
+    non_total_rows = [r for r in range(2, max_row + 1) if r not in total_rows]
+    if non_total_rows:
+        for col_idx in range(n_index_cols + 1, max_col + 1):
+            col_letter = get_column_letter(col_idx)
+            data_range = f"{col_letter}{min(non_total_rows)}:{col_letter}{max(non_total_rows)}"
+            if is_percent:
+                rule = DataBarRule(
+                    start_type='num', start_value=0,
+                    end_type='num', end_value=1,
+                    color=TR.INDIGO_CHIP, showValue=True,
+                    minLength=0, maxLength=100,
+                )
+            else:
+                rule = DataBarRule(
+                    start_type='num', start_value=0,
+                    end_type='max',
+                    color=TR.INDIGO_CHIP, showValue=True,
+                    minLength=0, maxLength=100,
+                )
+            ws.conditional_formatting.add(data_range, rule)
+
+    # ---- 列宽 ----
+    ws.column_dimensions['A'].width = 34
+    if n_index_cols >= 2:
+        ws.column_dimensions['B'].width = 26
+    for col_idx in range(n_index_cols + 1, max_col + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 18
+
+    # ---- 冻结 + 隐藏网格线 ----
+    freeze_col = get_column_letter(n_index_cols + 1)
+    ws.freeze_panes = f"{freeze_col}2"
+    ws.sheet_view.showGridLines = False
+
+
+def _apply_diff_heatmap(ws, percent_df, col_labels, start_row=2, n_index_cols=2):
+    """
+    列百分比 sheet 差异热力标注。
+
+    逐选项行（排除总计行）计算跨分组的 max%-min%（仅非总计列）。
+    delta >= 5pp：
+      - max 值单元格：amber-100 底 + indigo-700 粗体字
+      - min 值单元格：slate-50 底 + slate-400 字
+    delta < 5pp：保持原样式（斑马 + TEXT_SUB）。
+    """
+    if percent_df is None or percent_df.empty:
+        return
+
+    border = thin_border()
+    non_total_cols = [c for c in col_labels if not str(c).endswith("\n总计")]
+
+    # 找出哪些行是数据行（排除"总计"行），并保留其在 DataFrame 中的 (问题,选项) 索引
+    max_row = ws.max_row
+    total_rows = _find_total_rows(ws, max_row, n_index_cols)
+
+    # 建立 ws 行号 -> percent_df (问题,选项) 的映射
+    # percent_df 的 index 顺序 == ws 数据行顺序（从 start_row 起）
+    df_rows = list(percent_df.index)
+    ws_row_to_idx = {}
+    df_pointer = 0
+    for row_idx in range(start_row, max_row + 1):
+        if row_idx in total_rows:
+            continue
+        if df_pointer < len(df_rows):
+            ws_row_to_idx[row_idx] = df_rows[df_pointer]
+            df_pointer += 1
+
+    # 列标签 -> ws 列号映射（数据从 n_index_cols+1 起）
+    col_to_ws_col = {}
+    for ci, label in enumerate(col_labels, start=1):
+        col_to_ws_col[label] = n_index_cols + ci
+
+    for row_idx, df_idx in ws_row_to_idx.items():
+        try:
+            row_vals = percent_df.loc[df_idx, non_total_cols].astype(float)
+        except (KeyError, ValueError, TypeError):
+            continue
+        if row_vals.empty:
+            continue
+
+        max_val = float(row_vals.max())
+        min_val = float(row_vals.min())
+        delta = max_val - min_val
+
+        if delta < DIFF_THRESHOLD:
+            continue
+
+        # 找出等于 max / min 的列（可能多个并列，取第一个）
+        max_cols = [c for c in non_total_cols if abs(float(row_vals[c]) - max_val) < 1e-9]
+        min_cols = [c for c in non_total_cols if abs(float(row_vals[c]) - min_val) < 1e-9]
+
+        for label in max_cols:
+            cidx = col_to_ws_col.get(label)
+            if cidx is None:
+                continue
+            cell = ws.cell(row=row_idx, column=cidx)
+            cell.fill = make_fill(_DRIFT_BG)
+            cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_MAIN)
+            cell.border = border
+
+        for label in min_cols:
+            cidx = col_to_ws_col.get(label)
+            if cidx is None:
+                continue
+            cell = ws.cell(row=row_idx, column=cidx)
+            cell.fill = make_fill(_MIN_BG)
+            cell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MUTE)
+            cell.border = border
+
+
+def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
+    """
+    得分分析 sheet 格式化（Slate + Indigo 风格 + 最大差异标注）。
+
+    - 表头 slate-800 + 白字，行高 38
+    - 索引列（题目/指标）indigo-100 + indigo-900
+    - 得分值 size 11 粗体 indigo-700 居中
+    - 末尾追加"最大差异"列：▲ +X.X（绿字，>=5pp）/ — +X.X（slate-400，<5pp）
+    - freeze_panes C2，showGridLines False
+    """
+    max_row = ws.max_row
+    max_col = ws.max_column
+    border = thin_border()
+
+    # 先写表头：原 max_col 列 + 追加"最大差异"列
+    diff_col = max_col + 1
+
+    # 表头行
+    ws.row_dimensions[1].height = 38
+    for col_idx in range(1, diff_col + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.fill = make_fill(TR.TITLE_BG)
+        cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
+        cell.alignment = ALIGN_CENTER
+        cell.border = border
+    # "最大差异"表头（如该列原无内容则写入标题）
+    if ws.cell(row=1, column=diff_col).value is None:
+        ws.cell(row=1, column=diff_col, value="最大差异")
+
+    # 非总计列（用于计算得分跨组 max-min）
+    non_total_cols = [c for c in col_labels if not str(c).endswith("\n总计")]
+    col_to_ws_col = {}
+    for ci, label in enumerate(col_labels, start=1):
+        col_to_ws_col[label] = n_index_cols + ci
+
+    # 数据行
+    for row_idx in range(2, max_row + 1):
+        ws.row_dimensions[row_idx].height = 26
+        indicator_val = str(ws.cell(row=row_idx, column=2).value or "")
+        is_nps = "NPS" in indicator_val
+        zebra = TR.WHITE if row_idx % 2 == 0 else TR.ZEBRA_ALT
+
+        # 计算该得分行跨分组的 max-min
+        score_vals = []
+        for label in non_total_cols:
+            cidx = col_to_ws_col.get(label)
+            if cidx is None:
+                continue
+            v = ws.cell(row=row_idx, column=cidx).value
+            try:
+                score_vals.append(float(v))
+            except (TypeError, ValueError):
+                pass
+
+        if score_vals:
+            delta = max(score_vals) - min(score_vals)
+        else:
+            delta = 0.0
+
+        for col_idx in range(1, diff_col + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = border
+            if col_idx <= n_index_cols:
+                cell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+                cell.font = Font(name=Theme.FONT_NAME, size=10,
+                                bold=(col_idx == 1), color=TR.INDIGO_DEEP)
+                cell.alignment = ALIGN_LEFT
+            elif col_idx == diff_col:
+                # 最大差异标注列
+                cell.fill = make_fill(zebra)
+                if delta >= DIFF_THRESHOLD:
+                    cell.value = f"▲ +{delta:.2f}"
+                    cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_UP_FONT)
+                else:
+                    cell.value = f"— +{delta:.2f} (不显著)"
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
+                cell.alignment = ALIGN_CENTER
+            else:
+                cell.fill = make_fill(zebra)
+                cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.INDIGO_MAIN)
+                cell.alignment = ALIGN_CENTER
+                cell.number_format = '0.0%' if is_nps else '0.00'
+
+    # 列宽
+    ws.column_dimensions['A'].width = 34
+    if n_index_cols >= 2:
+        ws.column_dimensions['B'].width = 26
+    for col_idx in range(n_index_cols + 1, diff_col + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 18
+
+    freeze_col = get_column_letter(n_index_cols + 1)
+    ws.freeze_panes = f"{freeze_col}2"
+    ws.sheet_view.showGridLines = False
+
 
 def export_crosstab_excel(
     ct_result: dict,
     output_path: str,
     score_df: Optional[pd.DataFrame] = None,
 ) -> str:
-    """导出交叉分析 Excel 报告"""
+    """导出交叉分析 Excel 报告（Slate + Indigo 视觉风格）。"""
     freq_df = ct_result["freq_df"]
     percent_df = ct_result["percent_df"]
     col_labels = ct_result["col_labels"]
@@ -625,19 +920,20 @@ def export_crosstab_excel(
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
         # Sheet 1: 交叉分析（频数）
         freq_df.to_excel(writer, sheet_name='交叉分析', merge_cells=True)
-        format_data_sheet(writer.sheets['交叉分析'], is_percent=False)
-        writer.sheets['交叉分析'].sheet_properties.tabColor = "B4C6E7"
+        _format_crosstab_sheet(writer.sheets['交叉分析'], is_percent=False)
+        writer.sheets['交叉分析'].sheet_properties.tabColor = TR.TITLE_BG
 
-        # Sheet 2: 列百分比
+        # Sheet 2: 列百分比（含差异热力标注）
         percent_df.to_excel(writer, sheet_name='列百分比', merge_cells=True)
-        format_data_sheet(writer.sheets['列百分比'], is_percent=True)
-        writer.sheets['列百分比'].sheet_properties.tabColor = "F8CBAD"
+        _format_crosstab_sheet(writer.sheets['列百分比'], is_percent=True)
+        _apply_diff_heatmap(writer.sheets['列百分比'], percent_df, col_labels)
+        writer.sheets['列百分比'].sheet_properties.tabColor = TR.INDIGO_CHIP
 
         # Sheet 3: 得分分析（如有）
         if score_df is not None and not score_df.empty:
             score_df.to_excel(writer, sheet_name='得分分析', merge_cells=True)
-            format_score_sheet(writer.sheets['得分分析'])
-            writer.sheets['得分分析'].sheet_properties.tabColor = "C6EFCE"
+            _format_score_sheet_v2(writer.sheets['得分分析'], col_labels)
+            writer.sheets['得分分析'].sheet_properties.tabColor = TR.INDIGO_DEEP
 
     return output_path
 
