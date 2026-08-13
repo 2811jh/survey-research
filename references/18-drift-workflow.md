@@ -1,23 +1,34 @@
-# 时间异动诊断工作流程（阶段 6）
+# 问卷异动诊断工作流程（阶段 6）
 
-> 📌 **何时读取本文档**：用户有单份含时间列的回流问卷数据，想按周/月/天自动对比、诊断满意度/NPS/单选/多选的异动时，由 SKILL.md 阶段 6 指引跳转至此。
+> 📌 **何时读取本文档**：用户有含时间列的问卷数据（回流/满意度/NPS/活动跟踪等），或想按任意离散列对比各桶异动时，由 SKILL.md 阶段 6 指引跳转至此。
 
 ## 触发条件
 
-- "按周/月/天诊断这份回流数据的变化"
-- "逐题对比各周/各月/各天的满意度和 NPS 有没有显著变化"
-- "回流数据有没有异常波动 / 哪个指标这期掉了/涨了、显著吗"
+- "按周/月/天/季度诊断这份问卷数据的变化"
+- "逐题对比各周/各月的满意度和 NPS 有没有显著变化"
+- "问卷数据有没有异常波动 / 哪个指标这期掉了/涨了、显著吗"
+- "对比版本 A vs 版本 B 的满意度异动" / "活动前后对比" / "渠道对比"
 - MC 等持续回流问卷，想及时发现数据异动
 
 ## 前置
 
-- 输入为**含时间列的量化原始 CSV**（列名为编码后 Q1/Q2…，时间列默认 `结束答题时间`）。
-- 粒度（周/月/天）由用户指定；未指定时用 `ask_user_question` 让用户三选一。
+- 输入为**含时间列的量化原始 CSV**（列名为编码后 Q1/Q2…，时间列默认 `结束答题时间`）
+- 数据来源三选一：
+  - **本地文件**：用户直接给路径（路径 A）
+  - **下载产物**：`survey_download.py download` 下载的 `files.quantified_data` 文件路径（路径 B）
+  - **清洗后产物**：`survey_download.py clean` 清洗后下载的 `files.quantified_data` 文件路径（路径 B+清洗）
+- 分桶模式二选一：
+  - **时间分桶**（默认）：`--granularity week|month|day|quarter|custom_ranges`，时间列自动检测（默认列 → 关键词扫描 → ask 兜底）
+  - **列分桶**：`--bucket_col` 指定任意离散列（版本号/活动批次/渠道等），跳过时间列识别
+- 未指定模式时用 `ask_user_question` 让用户选粒度或分桶列
+- 下载产物默认带 `结束答题时间` 列，与异动诊断默认时间列对齐，无需额外配置
+- `value_labels.json` 放在数据同目录即可被自动加载，适合 MC 月度等场景复用
 
 ## 三步编排（一句话触发，中途不停）
 
 ### Step A：运行 analyze，分桶 + 逐题检验
 
+**时间分桶模式（默认）：**
 ```bash
 python {SKILL_DIR}/scripts/survey_drift.py analyze \
   --file_path "量化数据.csv" \
@@ -25,7 +36,30 @@ python {SKILL_DIR}/scripts/survey_drift.py analyze \
   --findings_out "{数据目录}/drift_findings.json"
 ```
 
-可选参数：`--time_col`（默认 `结束答题时间`）、`--nps_col`、`--satisfaction_cols`（不传则按关键词自动识别）、`--min_n`（默认 30）。
+**列分桶模式（非时间维度对比）：**
+```bash
+python {SKILL_DIR}/scripts/survey_drift.py analyze \
+  --file_path "量化数据.csv" \
+  --bucket_col "Q35.用户版本号" \
+  --findings_out "{数据目录}/drift_findings.json"
+```
+
+**自定义区间模式（活动/版本节点对比）：**
+```bash
+python {SKILL_DIR}/scripts/survey_drift.py analyze \
+  --file_path "量化数据.csv" \
+  --granularity custom_ranges \
+  --custom_ranges '[["双11前","2026-10-01","2026-11-10"],["双11期","2026-11-11","2026-11-13"],["双11后","2026-11-14","2026-11-30"]]' \
+  --findings_out "{数据目录}/drift_findings.json"
+```
+
+可选参数：
+- `--time_col`：时间列名；缺省自动检测（默认列 `结束答题时间` → 关键词扫描「时间/日期/date/time/提交/答题」→ ask 兜底）
+- `--nps_col` / `--satisfaction_cols`：不传则按关键词 + 五点量表自动识别
+- `--min_n`：默认 30（桶内样本不足不判异动）
+- `--bucket_col`：列分桶模式必传；与 `--granularity` 互斥
+- `--bucket_order`：列分桶桶顺序，逗号分隔，如 `v1.0,v2.0,v3.0`
+- `--custom_ranges`：`--granularity=custom_ranges` 时必传，JSON 数组
 
 读 stdout JSON：
 - `status=success` → 记下 `findings_out`、`buckets`、`low_n_buckets`、`questions_with_drift`，进入 Step B。
@@ -68,7 +102,7 @@ python {SKILL_DIR}/scripts/survey_drift.py export \
 
 ## drift_findings.json 结构
 
-- 顶层：`granularity`、`time_col`、`buckets`（旧→新有序）、`bucket_sizes`、`low_n_buckets`、`metrics`、`questions`、`nps_col`、`satisfaction_cols`。
+- 顶层：`granularity`（列分桶模式为 null）、`bucket_mode`（"time" / "column"）、`bucket_col`（列分桶模式才有）、`time_col`（时间分桶模式才有）、`time_col_source`（explicit / default / auto_detect / not_applicable）、`custom_ranges`（custom_ranges 粒度才有）、`buckets`（旧→新有序）、`bucket_sizes`、`low_n_buckets`、`metrics`、`questions`、`nps_col`、`satisfaction_cols`。
 - `metrics[]`：满意度均分（`type=satisfaction_mean`）、NPS（`type=nps`）。含 `by_bucket` 各期值、`adjacent` 相邻期检验（`delta`/`delta_pp`、`test`、`p`、`significant`、`drift`、`low_n`、`direction`）。**凡取值为 1~5 的五点量表单选题都会自动纳入 `metrics` 做均分显著性检验**（与 `satisfaction_cols` 关键词识别结果合并去重；`findings.satisfaction_cols` 记录最终纳入的全部均分题）。
 - `questions[]`：单选（含 `overall_test` 卡方）、多选（`overall_test=null`）。含 `by_bucket` 各期各选项占比、`adjacent_option_tests`（逐选项相邻期两比例 z）、题级 `drift`、`low_n`。**多选题占比/样本量以"答过此题(至少勾选一项)的人数"为基数**（与交叉分析一致，逻辑门控题不计未触达者；如 Q25 基数≈5.6万而非全样本 29万）。
   - `question`：主键（单选=完整列名；多选=`Q\d+.` 根前缀）。**结论 conclusions.json 的键用 `question`**。
