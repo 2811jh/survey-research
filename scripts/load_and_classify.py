@@ -308,3 +308,19 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ========================================================================= #
+#                        人口学题识别
+# ========================================================================= #
+
+DEMOGRAPHIC_KEYWORDS = ["性别", "年龄", "职业", "付费", "充值", "会员", "渠道", "地区", "城市", "设备"]
+
+
+def identify_demographic_cols(df, classification):
+    """关键词匹配人口学题。返回候选清单（按列顺序）。"""
+    candidates = []
+    for col in classification.get("single_choice", []):
+        if any(kw in str(col) for kw in DEMOGRAPHIC_KEYWORDS):
+            candidates.append(col)
+    return candidates
