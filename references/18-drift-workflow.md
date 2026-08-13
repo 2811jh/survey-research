@@ -57,7 +57,7 @@ python {SKILL_DIR}/scripts/survey_drift.py analyze \
 - `--time_col`：时间列名；缺省自动检测（默认列 `结束答题时间` → 关键词扫描「时间/日期/date/time/提交/答题」→ ask 兜底）
 - `--nps_col` / `--satisfaction_cols`：不传则按关键词 + 五点量表自动识别
 - `--min_n`：默认 30（桶内样本不足不判异动）
-- `--bucket_col`：列分桶模式必传；与 `--granularity` 互斥
+- `--bucket_col`：列分桶模式必传；与 `--granularity` 互斥（传 `--bucket_col` 时 `--granularity` 和 `--time_col` 被忽略）
 - `--bucket_order`：列分桶桶顺序，逗号分隔，如 `v1.0,v2.0,v3.0`
 - `--custom_ranges`：`--granularity=custom_ranges` 时必传，JSON 数组
 
@@ -102,7 +102,7 @@ python {SKILL_DIR}/scripts/survey_drift.py export \
 
 ## drift_findings.json 结构
 
-- 顶层：`granularity`（列分桶模式为 null）、`bucket_mode`（"time" / "column"）、`bucket_col`（列分桶模式才有）、`time_col`（时间分桶模式才有）、`time_col_source`（explicit / default / auto_detect / not_applicable）、`custom_ranges`（custom_ranges 粒度才有）、`buckets`（旧→新有序）、`bucket_sizes`、`low_n_buckets`、`metrics`、`questions`、`nps_col`、`satisfaction_cols`。
+- 顶层：`granularity`（列分桶模式为 null）、`bucket_mode`（"time" / "column"）、`bucket_col`（列分桶模式才有）、`time_col`（时间分桶模式才有）、`time_col_source`（`explicit` 用户显式指定 / `default` 命中默认列 `结束答题时间` / `auto_detect` 关键词扫描命中 / `not_found` 未找到时间列 / `not_applicable` 列分桶模式不适用）、`custom_ranges`（custom_ranges 粒度才有）、`buckets`（旧→新有序）、`bucket_sizes`、`low_n_buckets`、`metrics`、`questions`、`nps_col`、`satisfaction_cols`（实际为合并集：关键词识别 + 五点量表自动检测的全部均分题）。
 - `metrics[]`：满意度均分（`type=satisfaction_mean`）、NPS（`type=nps`）。含 `by_bucket` 各期值、`adjacent` 相邻期检验（`delta`/`delta_pp`、`test`、`p`、`significant`、`drift`、`low_n`、`direction`）。**凡取值为 1~5 的五点量表单选题都会自动纳入 `metrics` 做均分显著性检验**（与 `satisfaction_cols` 关键词识别结果合并去重；`findings.satisfaction_cols` 记录最终纳入的全部均分题）。
 - `questions[]`：单选（含 `overall_test` 卡方）、多选（`overall_test=null`）。含 `by_bucket` 各期各选项占比、`adjacent_option_tests`（逐选项相邻期两比例 z）、题级 `drift`、`low_n`。**多选题占比/样本量以"答过此题(至少勾选一项)的人数"为基数**（与交叉分析一致，逻辑门控题不计未触达者；如 Q25 基数≈5.6万而非全样本 29万）。
   - `question`：主键（单选=完整列名；多选=`Q\d+.` 根前缀）。**结论 conclusions.json 的键用 `question`**。
@@ -135,8 +135,11 @@ conclusions.json 示例：
 
 | 情况 | 处理 |
 |------|------|
-| `need_input`（缺时间列） | 追问用户时间列，加 `--time_col` 重跑 |
-| `need_input`（识别不到 NPS/满意度） | 让用户指定 `--nps_col` / `--satisfaction_cols` 重跑 |
+| `need_input`（缺时间列，`reason=time_col_missing`） | 追问用户时间列，加 `--time_col` 重跑 |
+| `need_input`（识别不到 NPS/满意度，`reason=no_metric`） | 让用户指定 `--nps_col` / `--satisfaction_cols` 重跑 |
+| `need_input`（既没传 `--granularity` 也没传 `--bucket_col`，`reason=no_bucket_mode`） | 让用户指定分桶模式：时间分桶选粒度，或列分桶选 `--bucket_col` |
+| `need_input`（列分桶时分桶列不存在，`reason=bucket_col_missing`） | 让用户从可用列里选 `--bucket_col` |
+| `error`（`--custom_ranges` JSON 解析失败） | 检查 JSON 格式，每项需为 `[label, start_date, end_date]` |
 | 桶数 < 2 | 提示时间跨度不足，扩大数据范围或换更细粒度 |
 
 ## 后续操作提示

@@ -1288,7 +1288,7 @@ def _cmd_export(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="问卷时间异动诊断")
+    parser = argparse.ArgumentParser(description="问卷异动诊断")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     pa = sub.add_parser("analyze", help="分桶 + 检验 → findings JSON")

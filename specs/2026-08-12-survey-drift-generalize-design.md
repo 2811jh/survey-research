@@ -224,7 +224,7 @@ pa.add_argument("--time_col", default=None)  # 默认 None 触发自动检测
   "bucket_col": "Q35.用户版本号",     // 仅 column 模式存在
   "custom_ranges": [...],           // 仅 custom_ranges 粒度存在
   "time_col": "结束答题时间",          // time 模式存在，自动检测得到的实际列名
-  "time_col_source": "default" | "explicit" | "auto_detect" | "user_specified",
+  "time_col_source": "default" | "explicit" | "auto_detect" | "not_found" | "not_applicable",
   "buckets": [...],
   "bucket_sizes": {...},
   "low_n_buckets": [...],
@@ -301,6 +301,6 @@ pa.add_argument("--time_col", default=None)  # 默认 None 触发自动检测
 | 风险 | 缓解 |
 |------|------|
 | 时间列自动检测误命中（如问卷里有「答题时长」列） | 关键词清单严格区分：「时间/日期/date/time/提交/答题」+ 类型校验（必须是 datetime 或可解析为时间的字符串）|
-| 列分桶模式桶数过多（如版本号有 50 个） | 加 `--max_buckets` 默认 20，超出时返回 `need_input` 让用户聚合或筛选 |
+| 列分桶模式桶数过多（如版本号有 50 个） | **规划中**：未来可加 `--max_buckets` 默认 20，超出时返回 `need_input` 让用户聚合或筛选。当前版本未实现，先依赖用户用 `--bucket_order` 显式指定关注的桶 |
 | custom_ranges 日期格式错误 | 脚本校验日期格式，错误时返回明确报错 |
 | 旧文档用户用「回流报告」触发语找不到 | description 保留「回流报告」作为兼容触发语 |
