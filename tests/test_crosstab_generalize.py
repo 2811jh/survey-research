@@ -133,3 +133,52 @@ def test_calc_scores_含样本量行():
     score_idx = next(i for i, x in enumerate(indices) if "得分" in x)
     sample_idx = next(i for i, x in enumerate(indices) if "样本量" in x)
     assert sample_idx == score_idx + 1, f"sample row should follow score row: {indices}"
+
+
+from crosstab import calc_significance, two_prop_z
+
+
+def test_two_prop_z_基本():
+    z, p = two_prop_z(60, 100, 50, 100)
+    assert abs(z) > 1.4
+    assert p < 0.2
+
+
+def test_two_prop_z_无差异():
+    z, p = two_prop_z(50, 100, 50, 100)
+    assert z == 0.0
+    assert p == 1.0
+
+
+def test_calc_significance_vs_分组维度总计():
+    """构造已知差异：男组某选项占比 vs 性别总计占比 差 10pp，样本量足够显著。"""
+    import pandas as pd
+    freq = pd.DataFrame(
+        {
+            "Q33.性别\n男": [120, 80, 200],
+            "Q33.性别\n女": [80, 120, 200],
+            "Q33.性别\n总计": [200, 200, 400],
+        },
+        index=pd.MultiIndex.from_arrays(
+            [["Q1"] * 3, ["选项A", "选项B", "总计"]],
+            names=["题目", "选项"],
+        ),
+    )
+    ct_result = {
+        "freq_df": freq,
+        "col_labels": ["Q33.性别\n男", "Q33.性别\n女", "Q33.性别\n总计"],
+        "col_totals": {
+            "Q33.性别\n男": 200,
+            "Q33.性别\n女": 200,
+            "Q33.性别\n总计": 400,
+        },
+    }
+    sig = calc_significance(ct_result)
+    # 男 vs 总计：选项A 60% vs 50%，差 10pp，应显著
+    assert "Q33.性别" in sig
+    assert "男" in sig["Q33.性别"]
+    assert "选项A" in sig["Q33.性别"]["男"]
+    info = sig["Q33.性别"]["男"]["选项A"]
+    assert info["significant"] is True
+    assert info["direction"] == "up"
+    assert abs(info["delta_pp"] - 10.0) < 0.1

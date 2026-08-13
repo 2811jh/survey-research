@@ -624,6 +624,92 @@ def calc_scores(df: pd.DataFrame, ct_result: dict, score_questions: list) -> Opt
 
 
 # ========================================================================= #
+#                  显著性检验（分组 vs 分组维度总计）                      #
+# ========================================================================= #
+
+def two_prop_z(c1, n1, c2, n2):
+    """两比例 z 检验（双侧，pooled）。返回 (z, p)。n 为 0 时返回 (0.0, 1.0)。"""
+    if n1 == 0 or n2 == 0:
+        return 0.0, 1.0
+    p1 = c1 / n1
+    p2 = c2 / n2
+    p_pool = (c1 + c2) / (n1 + n2)
+    if p_pool == 0 or p_pool == 1:
+        return 0.0, 1.0
+    se = (p_pool * (1 - p_pool) * (1 / n1 + 1 / n2)) ** 0.5
+    if se == 0:
+        return 0.0, 1.0
+    z = (p1 - p2) / se
+    from scipy import stats
+    p = 2 * (1 - stats.norm.cdf(abs(z)))
+    return round(z, 4), round(p, 4)
+
+
+def _extract_dim_from_label(label):
+    """从列标签提取分组维度名。'Q33.性别\\n男' → 'Q33.性别'。无 \\n 返回原值。"""
+    s = str(label)
+    if "\n" in s:
+        return s.split("\n")[0]
+    return s
+
+
+def calc_significance(ct_result: dict) -> dict:
+    """对每个分组维度的各分组值 vs 该维度总计列，逐选项做两比例 z 检验。
+
+    Returns:
+        {分组维度列名: {分组值: {选项: {p, delta_pp, significant, direction}}}}
+        direction: "up" (分组 > 总计) / "down" (分组 < 总计)
+    """
+    freq_df = ct_result["freq_df"]
+    col_labels = ct_result["col_labels"]
+    col_totals = ct_result["col_totals"]
+
+    # 按分组维度归类列
+    dim_cols = {}
+    for label in col_labels:
+        dim = _extract_dim_from_label(label)
+        if dim not in dim_cols:
+            dim_cols[dim] = {"total_col": None, "group_cols": []}
+        if str(label).endswith("\n总计"):
+            dim_cols[dim]["total_col"] = label
+        else:
+            dim_cols[dim]["group_cols"].append(label)
+
+    result = {}
+    for dim, info in dim_cols.items():
+        total_col = info["total_col"]
+        if total_col is None:
+            continue
+        total_n = col_totals[total_col]
+        result[dim] = {}
+
+        for group_col in info["group_cols"]:
+            group_n = col_totals[group_col]
+            group_value = str(group_col).split("\n")[-1]
+            result[dim][group_value] = {}
+
+            for idx in freq_df.index:
+                option = idx[1] if isinstance(idx, tuple) else idx
+                if str(option) in ("总计", "合计", "Total"):
+                    continue
+                c_group = int(freq_df.loc[idx, group_col])
+                c_total = int(freq_df.loc[idx, total_col])
+
+                z, p = two_prop_z(c_group, group_n, c_total, total_n)
+                p_group = c_group / group_n if group_n else 0
+                p_total = c_total / total_n if total_n else 0
+                delta_pp = round((p_group - p_total) * 100, 1)
+                significant = (p < 0.05) and (abs(delta_pp) >= 5)
+                direction = "up" if delta_pp > 0 else "down"
+
+                result[dim][group_value][str(option)] = {
+                    "p": p, "delta_pp": delta_pp,
+                    "significant": significant, "direction": direction,
+                }
+    return result
+
+
+# ========================================================================= #
 #                      差异摘要
 # ========================================================================= #
 
