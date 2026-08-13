@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-问卷分析工具 - 时间异动诊断 (survey_drift)
+问卷分析工具 - 异动诊断 (survey_drift)
 ==========================================
 
-单份回流问卷按 周/月/天 分桶，逐题相邻期显著性检验，双门槛判异动，
-Agent 写一句话结论，导出 4-Sheet Excel。
+按 周/月/天/季度/自定义区间/任意列 分桶，逐题相邻期显著性检验，
+双门槛判异动，Agent 写一句话结论，导出 4-Sheet Excel。
 
 子命令:
     analyze  分桶 + 检验 → drift_findings.json
@@ -1062,10 +1062,23 @@ def _format_method_sheet(ws):
 
 # ===================== CLI ===================== #
 
-def default_output_filename(granularity):
-    label = {"week": "按周", "month": "按月", "day": "按天"}.get(granularity, granularity)
+def default_output_filename(granularity, bucket_col=None):
+    if bucket_col:
+        # 列分桶模式：用列名简化作 label
+        label = _short_col_label(bucket_col)
+    else:
+        label = {"week": "按周", "month": "按月", "day": "按天",
+                 "quarter": "按季度", "custom_ranges": "按自定义区间"}.get(granularity, granularity)
     from datetime import datetime
-    return f"回流异动诊断_{label}_{datetime.now():%Y%m%d_%H%M}.xlsx"
+    return f"问卷异动诊断_{label}_{datetime.now():%Y%m%d_%H%M}.xlsx"
+
+
+def _short_col_label(col):
+    """从列名提取简短 label：Q35.用户版本号 → 用户版本号；无前缀取整列。"""
+    s = str(col)
+    # 去掉 Q\d+. 前缀
+    m = re.match(r"Q\d+\.\s*(.+)", s)
+    return m.group(1) if m else s
 
 
 def _cmd_analyze(args):
