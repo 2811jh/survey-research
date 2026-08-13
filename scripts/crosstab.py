@@ -729,6 +729,41 @@ def calc_significance(ct_result: dict) -> dict:
     return result
 
 
+def calc_heatmap_data(ct_result, significance_matrix):
+    """生成热力图数据。返回 DataFrame，index=题目×选项，columns=各分组值，值=delta_pp。"""
+    if not significance_matrix:
+        return None
+    # 收集所有 (dim, group_col_value) 对，保持维度顺序
+    all_groups = []
+    for dim, groups in significance_matrix.items():
+        for group_col_value in groups:
+            all_groups.append((dim, group_col_value))
+
+    # 收集所有行索引（题目×选项，排除总计行）
+    freq_df = ct_result["freq_df"]
+    row_indices = []
+    for idx in freq_df.index:
+        option = idx[1] if isinstance(idx, tuple) else idx
+        if str(option) in ("总计", "合计", "Total"):
+            continue
+        row_indices.append(idx)
+
+    # 构建 DataFrame
+    data = {}
+    for dim, group_col_value in all_groups:
+        col_data = {}
+        for idx in row_indices:
+            option = str(idx[1] if isinstance(idx, tuple) else idx)
+            if option in significance_matrix[dim][group_col_value]:
+                col_data[idx] = significance_matrix[dim][group_col_value][option]["delta_pp"]
+            else:
+                col_data[idx] = 0.0
+        data[group_col_value] = col_data
+
+    heatmap_df = pd.DataFrame(data, index=row_indices)
+    return heatmap_df
+
+
 # ========================================================================= #
 #                      差异摘要
 # ========================================================================= #
@@ -1116,6 +1151,96 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
     ws.sheet_view.showGridLines = False
 
 
+def _format_heatmap_sheet(ws, heatmap_df, col_dimensions):
+    """格式化热力图 Sheet：渐变着色 + 分块 + 维度标题行。"""
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = _DOWN_FONT  # red-700
+
+    # 颜色阶梯
+    def _heat_color(delta_pp):
+        """返回 (fill_hex, font_hex)。"""
+        if delta_pp >= 20: return ("66BB6A", "FFFFFF")
+        if delta_pp >= 15: return ("A5D6A7", "1B5E20")
+        if delta_pp >= 10: return ("C8E6C9", "2E7D32")
+        if delta_pp >= 5:  return ("E8F5E9", "388E3C")
+        if delta_pp <= -20: return ("EF5350", "FFFFFF")
+        if delta_pp <= -15: return ("EF9A9A", "B71C1C")
+        if delta_pp <= -10: return ("FFCDD2", "C62828")
+        if delta_pp <= -5:  return ("FFEBEE", "D32F2F")
+        return ("F8FAFC", "94A3B8")  # 非显著
+
+    # 维度标题行（第 1 行）+ 分组值表头（第 2 行）
+    ws.cell(row=1, column=1, value="题目")
+    ws.cell(row=1, column=2, value="选项")
+    ws.cell(row=2, column=1, value="题目")
+    ws.cell(row=2, column=2, value="选项")
+    for c in [1, 2]:
+        for r in [1, 2]:
+            cell = ws.cell(row=r, column=c)
+            cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
+            cell.fill = make_fill(TR.TITLE_BG if r == 1 else TR.SUBTITLE_BG)
+            cell.alignment = ALIGN_CENTER
+
+    # 按维度分块写列
+    col_offset = 3  # 从 C 列开始
+    for dim_info in col_dimensions:
+        # 短化维度名：Q33.请问您的性别是？ → 性别
+        short_dim = _short_col_label(dim_info["question"])
+        n_values = len(dim_info["values"])
+        # 维度标题行（合并单元格）
+        ws.cell(row=1, column=col_offset, value=short_dim)
+        ws.cell(row=1, column=col_offset).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
+        ws.cell(row=1, column=col_offset).fill = make_fill(TR.TITLE_BG)
+        ws.cell(row=1, column=col_offset).alignment = ALIGN_CENTER
+        if n_values > 1:
+            ws.merge_cells(start_row=1, start_column=col_offset, end_row=1, end_column=col_offset + n_values - 1)
+        # 分组值表头
+        for i, val_label in enumerate(dim_info["values"]):
+            short_val = str(val_label).split("\n")[-1]  # 取 \n 后的分组值
+            ws.cell(row=2, column=col_offset + i, value=short_val)
+            ws.cell(row=2, column=col_offset + i).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
+            ws.cell(row=2, column=col_offset + i).fill = make_fill(TR.SUBTITLE_BG)
+            ws.cell(row=2, column=col_offset + i).alignment = ALIGN_CENTER
+        col_offset += n_values + 1  # +1 间隔空列
+
+    # 写数据行（从第 3 行起）
+    for r_idx, idx in enumerate(heatmap_df.index):
+        ws_row = r_idx + 3
+        q, opt = (idx[0], idx[1]) if isinstance(idx, tuple) else (idx, "")
+        # A 列：题目
+        ws.cell(row=ws_row, column=1, value=q)
+        ws.cell(row=ws_row, column=1).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
+        ws.cell(row=ws_row, column=1).fill = make_fill(TR.INDIGO_ACCENT_BG)
+        # B 列：选项
+        ws.cell(row=ws_row, column=2, value=opt)
+        ws.cell(row=ws_row, column=2).font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MAIN)
+
+        # 数据列
+        col_offset = 3
+        for dim_info in col_dimensions:
+            for val_label in dim_info["values"]:
+                # heatmap_df 列名为裸分组值（\n 后部分），用其做查找
+                short_val = str(val_label).split("\n")[-1]
+                if short_val in heatmap_df.columns:
+                    delta = heatmap_df.at[idx, short_val]
+                    fill_hex, font_hex = _heat_color(float(delta))
+                    cell = ws.cell(row=ws_row, column=col_offset)
+                    if abs(float(delta)) >= 0.1:
+                        cell.value = f"{float(delta):+.1f}pp"
+                    else:
+                        cell.value = "—"
+                    cell.fill = make_fill(fill_hex)
+                    cell.font = Font(name=Theme.FONT_NAME, size=10, color=font_hex)
+                    cell.alignment = ALIGN_CENTER
+                col_offset += 1
+            col_offset += 1  # 间隔空列
+
+    # 列宽 + 冻结
+    ws.column_dimensions['A'].width = 34
+    ws.column_dimensions['B'].width = 26
+    ws.freeze_panes = "C3"
+
+
 def export_crosstab_excel(
     ct_result: dict,
     output_path: str,
@@ -1155,6 +1280,13 @@ def export_crosstab_excel(
             score_df.to_excel(writer, sheet_name='得分分析', merge_cells=True)
             _format_score_sheet_v2(writer.sheets['得分分析'], col_labels)
             writer.sheets['得分分析'].sheet_properties.tabColor = TR.INDIGO_DEEP
+
+        # Sheet 4: 📊 差异热力图
+        if significance_matrix:
+            heatmap_df = calc_heatmap_data(ct_result, significance_matrix)
+            if heatmap_df is not None and not heatmap_df.empty:
+                ws4 = writer.book.create_sheet("📊 差异热力图")
+                _format_heatmap_sheet(ws4, heatmap_df, col_dimensions)
 
     return output_path
 
