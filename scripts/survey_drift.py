@@ -281,6 +281,47 @@ def load_df(file_path):
     return df
 
 
+_TIME_COL_KEYWORDS = ("时间", "日期", "date", "time", "提交", "答题")
+
+
+def _is_parseable_as_datetime(series, sample_size=50):
+    """抽样检查列是否可解析为时间。纯数值列（如答题时长秒数）应被排除。"""
+    non_null = series.dropna()
+    if len(non_null) == 0:
+        return False
+    # 纯数值列（int/float，非 datetime64）在问卷场景下通常是时长/计数/编码，
+    # 不应误判为时间列（pandas 会把小整数当 ns 纪元解析导致假阳性）。
+    if pd.api.types.is_numeric_dtype(non_null) and not pd.api.types.is_datetime64_any_dtype(non_null):
+        return False
+    sample = non_null.sample(min(sample_size, len(non_null)), random_state=42)
+    parsed = pd.to_datetime(sample, errors="coerce")
+    # 解析成功率 ≥ 80% 视为时间列
+    return parsed.notna().mean() >= 0.8
+
+
+def detect_time_col(df, explicit):
+    """时间列自动检测。返回 (col_name, source)。
+    source 取值：explicit / default / auto_detect / not_found。"""
+    if explicit:
+        if explicit in df.columns and _is_parseable_as_datetime(df[explicit]):
+            return explicit, "explicit"
+        return None, "not_found"
+    # 优先级 1：默认列
+    if "结束答题时间" in df.columns and _is_parseable_as_datetime(df["结束答题时间"]):
+        return "结束答题时间", "default"
+    # 优先级 2：关键词扫描
+    candidates = []
+    for col in df.columns:
+        s = str(col).lower()
+        if any(kw in s for kw in _TIME_COL_KEYWORDS):
+            if _is_parseable_as_datetime(df[col]):
+                candidates.append(col)
+    if candidates:
+        # 取第一个命中的（按列顺序）
+        return candidates[0], "auto_detect"
+    return None, "not_found"
+
+
 # ===================== findings 组装 ===================== #
 
 def _five_point_scale_series(series):
@@ -1085,9 +1126,11 @@ def _cmd_analyze(args):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from load_and_classify import classify_columns
     df = load_df(args.file_path)
-    if args.time_col not in df.columns:
+    # 时间列自动检测（Task 3 会加 bucket_col 分支，此处先只处理时间分桶）
+    time_col, time_col_source = detect_time_col(df, args.time_col)
+    if time_col is None:
         return {"status": "need_input", "reason": "time_col_missing",
-                "message": f"时间列 '{args.time_col}' 不存在，可用列：{list(df.columns[:20])}"}
+                "message": f"未找到时间列，可用列：{list(df.columns[:20])}；请用 --time_col 指定"}
     classification = classify_columns(df)
     single = classification["single_choice"]
     nps_col = args.nps_col or identify_metric_cols(single)[0]
@@ -1095,7 +1138,7 @@ def _cmd_analyze(args):
     if not nps_col and not sat_cols:
         return {"status": "need_input", "reason": "no_metric",
                 "message": "未能自动识别 NPS/满意度题，请用 --nps_col / --satisfaction_cols 指定"}
-    findings = build_findings(df, classification, args.granularity, args.time_col,
+    findings = build_findings(df, classification, args.granularity, time_col,
                               nps_col, sat_cols, args.min_n)
     out = args.findings_out or os.path.join(
         os.path.dirname(os.path.abspath(args.file_path)), "drift_findings.json")
@@ -1103,6 +1146,7 @@ def _cmd_analyze(args):
         json.dump(findings, f, ensure_ascii=False, indent=2)
     return {
         "status": "success", "granularity": args.granularity,
+        "time_col": time_col, "time_col_source": time_col_source,
         "buckets": findings["buckets"], "bucket_sizes": findings["bucket_sizes"],
         "low_n_buckets": findings["low_n_buckets"],
         "questions_total": len(findings["questions"]),
@@ -1144,7 +1188,8 @@ def main():
     pa = sub.add_parser("analyze", help="分桶 + 检验 → findings JSON")
     pa.add_argument("--file_path", required=True)
     pa.add_argument("--granularity", required=True, choices=["week", "month", "day"])
-    pa.add_argument("--time_col", default="结束答题时间")
+    pa.add_argument("--time_col", default=None,
+                    help="时间列名；缺省自动检测（默认列 + 关键词扫描）")
     pa.add_argument("--nps_col", default=None)
     pa.add_argument("--satisfaction_cols", nargs="*", default=None)
     pa.add_argument("--min_n", type=int, default=30)
