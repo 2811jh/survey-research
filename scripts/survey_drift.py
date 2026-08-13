@@ -793,12 +793,13 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
     ws4.append(["项", "说明"])
     if findings.get("bucket_mode") == "column":
         ws4.append(["分桶维度", f"按列：{findings.get('bucket_col')}"])
+        ws4.append(["时间列", "不适用（列分桶模式）"])
     else:
         gran = findings.get("granularity")
         gran_label = {"week": "按周", "month": "按月", "day": "按天",
                       "quarter": "按季度", "custom_ranges": "按自定义区间"}.get(gran, gran)
         ws4.append(["分桶粒度", gran_label])
-    ws4.append(["时间列", findings["time_col"]])
+        ws4.append(["时间列", findings.get("time_col") or "未识别"])
     ws4.append(["各桶样本量", "; ".join(f"{b}={findings['bucket_sizes'].get(b, 0)}" for b in buckets)])
     ws4.append(["样本不足桶(n<30)", "; ".join(findings["low_n_buckets"]) or "无"])
     ws4.append(["判异动门槛",
