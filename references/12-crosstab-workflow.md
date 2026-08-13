@@ -15,6 +15,15 @@
 - 行变量（被分析的题目）：通常用 `["all"]` 表示全部
 - 列变量（分组维度）：用户指定的分组变量列名
 
+**自动识别分组维度**：不传具体列名，传 `["auto"]` 让脚本识别人口学题（性别/年龄/职业/付费/会员/渠道/地区/城市/设备）：
+```bash
+python {SKILL_DIR}/scripts/crosstab.py \
+  --file_path "用户文件路径" \
+  --row_questions '["all"]' \
+  --col_questions '["auto"]'
+```
+脚本返回候选清单后，你结合业务场景判断哪些适合做分组维度，用 `ask_user_question`（multiSelect: true）让用户确认，再把选中的列名传回 `--col_questions` 重跑。
+
 ### 2. 判断是否需要合并选项
 
 如果分组变量是量表题（如满意度 1-5 分），考虑合并为二分类：
@@ -58,6 +67,16 @@ python {SKILL_DIR}/scripts/crosstab.py \
   --calc_scores auto
 ```
 
+**多分组并列展开**：传多个列变量，各分组维度并列展开，各自带总计列：
+```bash
+python {SKILL_DIR}/scripts/crosstab.py \
+  --file_path "用户文件路径" \
+  --row_questions '["all"]' \
+  --col_questions '["Q33.请问您的性别是？", "Q34.请问您的年龄是？", "Q35.请问您的职业是？"]' \
+  --calc_scores auto
+```
+输出列结构：性别(总计|男|女) | 年龄(总计|<18|18-24|...) | 职业(总计|学生|工作|...)，各维度独立对比自己的总计。
+
 关键参数：
 - `--row_questions`：行变量 JSON 列表。`["all"]` = 所有可分析题目
 - `--col_questions`：列变量 JSON 列表。填入确认的分组变量列名
@@ -65,20 +84,49 @@ python {SKILL_DIR}/scripts/crosstab.py \
 - `--calc_scores`：`auto` = 自动检测满意度/NPS 题并计算得分
 - `--output_path`：可选，默认 `{文件名}_交叉分析.xlsx`
 
+默认输出文件名：`{文件名}_交叉分析_按{分组列简称}.xlsx`，多分组用下划线连接。如 `..._交叉分析_按性别_年龄_职业.xlsx`。可用 `--output_path` 自定义。
+
 ### 4. 读取输出 JSON
 
 脚本 stdout 返回 JSON，包含：
 - `percent_table`：各题各选项在不同分组的百分比
 - `diff_summary`：每题的最大差异选项和差异值
 - `score_summary`：满意度/NPS 得分（如有）
+- `significant_matrix`：各分组值 vs 维度总计的 z 检验显著性与 delta_pp
+- `col_dimensions`：列维度结构（各分组维度→分组值→列序映射）
 
 重点关注 `diff_summary` 中差异值 > 0.05（5pp）的题目，这些是有意义的发现。
+
+### Excel 结构（4 Sheet）
+
+| Sheet | 内容 | tabColor |
+|-------|------|----------|
+| 交叉分析 | 频数表 | slate-800 |
+| 列百分比 | 列百分比 + 显著性着色 + DataBar | indigo-600 |
+| 得分分析 | 均分+样本量行 + 趋势条 DataBar | indigo-900 |
+| 📊 差异热力图 | delta_pp 渐变热力图（vs 各维度总计） | red-700 |
 
 > 📖 **参考** `references/05-survey-interpretation.md`：差异判断需结合样本量——小样本（< 100）时 5pp 差异不一定显著；NPS 分差 < 5 分通常为噪音；李克特量表不要只看均值差，需看分布变化。
 
 ### 5. 生成报告
 
 分析完 JSON 后，跳转到 `references/17-md-report-workflow.md` 生成 Markdown 报告。
+
+### 6. 显著性检验（vs 分组维度总计）
+
+脚本自动对每个分组维度的各分组值 vs **该维度的总计列**做两比例 z 检验：
+- 男/女对比的是「性别总计」，不是全样本总计
+- 18-24 岁对比的是「年龄总计」
+
+**双门槛判定**：p<0.05 且 |Δ占比|≥5pp 才标记显著。
+
+**Excel 着色**（列百分比 Sheet）：
+- 显著且分组 > 总计：amber-100 底 + green-800 字 ↑
+- 显著且分组 < 总计：amber-100 底 + red-700 字 ↓
+- 非显著：zebra + slate-600 字
+- 总计列：indigo-100 底（基准标识）
+
+**差异热力图 Sheet**：第 4 Sheet 用渐变色（绿=高于总计、红=低于总计）全盘展示所有题目×选项在各分组上的 delta_pp。
 
 ---
 
