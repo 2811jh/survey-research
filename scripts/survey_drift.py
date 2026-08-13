@@ -791,7 +791,13 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
     # ---- Sheet 4: 方法与样本 ----
     ws4 = wb.create_sheet("ℹ️ 方法与样本")
     ws4.append(["项", "说明"])
-    ws4.append(["分桶粒度", {"week": "按周", "month": "按月", "day": "按天"}.get(findings["granularity"])])
+    if findings.get("bucket_mode") == "column":
+        ws4.append(["分桶维度", f"按列：{findings.get('bucket_col')}"])
+    else:
+        gran = findings.get("granularity")
+        gran_label = {"week": "按周", "month": "按月", "day": "按天",
+                      "quarter": "按季度", "custom_ranges": "按自定义区间"}.get(gran, gran)
+        ws4.append(["分桶粒度", gran_label])
     ws4.append(["时间列", findings["time_col"]])
     ws4.append(["各桶样本量", "; ".join(f"{b}={findings['bucket_sizes'].get(b, 0)}" for b in buckets)])
     ws4.append(["样本不足桶(n<30)", "; ".join(findings["low_n_buckets"]) or "无"])
@@ -1200,11 +1206,33 @@ def _cmd_analyze(args):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from load_and_classify import classify_columns
     df = load_df(args.file_path)
-    # 时间列自动检测（Task 3 会加 bucket_col 分支，此处先只处理时间分桶）
-    time_col, time_col_source = detect_time_col(df, args.time_col)
-    if time_col is None:
-        return {"status": "need_input", "reason": "time_col_missing",
-                "message": f"未找到时间列，可用列：{list(df.columns[:20])}；请用 --time_col 指定"}
+    # 解析 --bucket_order：逗号分隔 → list
+    bucket_order = None
+    if args.bucket_order:
+        bucket_order = [s.strip() for s in args.bucket_order.split(",") if s.strip()]
+    # 解析 --custom_ranges：JSON 字符串 → list
+    custom_ranges = None
+    if args.custom_ranges:
+        try:
+            custom_ranges = json.loads(args.custom_ranges)
+        except json.JSONDecodeError as e:
+            return {"status": "error", "message": f"--custom_ranges JSON 解析失败：{e}"}
+    # 互斥校验
+    if not args.bucket_col and not args.granularity:
+        return {"status": "need_input", "reason": "no_bucket_mode",
+                "message": "必须指定 --granularity（时间分桶）或 --bucket_col（列分桶）"}
+    # 模式 B：列分桶（非时间维度），跳过时间列检测
+    if args.bucket_col:
+        if args.bucket_col not in df.columns:
+            return {"status": "need_input", "reason": "bucket_col_missing",
+                    "message": f"分桶列 '{args.bucket_col}' 不存在，可用列：{list(df.columns[:20])}"}
+        time_col = None
+        time_col_source = "not_applicable"
+    else:
+        time_col, time_col_source = detect_time_col(df, args.time_col)
+        if time_col is None:
+            return {"status": "need_input", "reason": "time_col_missing",
+                    "message": f"未找到时间列，可用列：{list(df.columns[:20])}；请用 --time_col 指定"}
     classification = classify_columns(df)
     single = classification["single_choice"]
     nps_col = args.nps_col or identify_metric_cols(single)[0]
@@ -1213,13 +1241,16 @@ def _cmd_analyze(args):
         return {"status": "need_input", "reason": "no_metric",
                 "message": "未能自动识别 NPS/满意度题，请用 --nps_col / --satisfaction_cols 指定"}
     findings = build_findings(df, classification, args.granularity, time_col,
-                              nps_col, sat_cols, args.min_n)
+                              nps_col, sat_cols, args.min_n,
+                              bucket_col=args.bucket_col, bucket_order=bucket_order,
+                              custom_ranges=custom_ranges, time_col_source=time_col_source)
     out = args.findings_out or os.path.join(
         os.path.dirname(os.path.abspath(args.file_path)), "drift_findings.json")
     with open(out, "w", encoding="utf-8") as f:
         json.dump(findings, f, ensure_ascii=False, indent=2)
     return {
-        "status": "success", "granularity": args.granularity,
+        "status": "success", "granularity": findings.get("granularity"),
+        "bucket_mode": findings.get("bucket_mode"),
         "time_col": time_col, "time_col_source": time_col_source,
         "buckets": findings["buckets"], "bucket_sizes": findings["bucket_sizes"],
         "low_n_buckets": findings["low_n_buckets"],
@@ -1250,7 +1281,7 @@ def _cmd_export(args):
             value_labels = json.load(f)
     out = args.output_path or os.path.join(
         os.path.dirname(os.path.abspath(args.findings)),
-        default_output_filename(findings["granularity"]))
+        default_output_filename(findings.get("granularity"), findings.get("bucket_col")))
     return export_excel(findings, conclusions, out, summary_scope=args.summary_scope,
                         value_labels=value_labels)
 
@@ -1261,13 +1292,23 @@ def main():
 
     pa = sub.add_parser("analyze", help="分桶 + 检验 → findings JSON")
     pa.add_argument("--file_path", required=True)
-    pa.add_argument("--granularity", required=True, choices=["week", "month", "day"])
+    pa.add_argument("--granularity", required=False, default=None,
+                    choices=["week", "month", "day", "quarter", "custom_ranges"],
+                    help="时间分桶粒度；传 --bucket_col 时可省略")
     pa.add_argument("--time_col", default=None,
                     help="时间列名；缺省自动检测（默认列 + 关键词扫描）")
     pa.add_argument("--nps_col", default=None)
     pa.add_argument("--satisfaction_cols", nargs="*", default=None)
     pa.add_argument("--min_n", type=int, default=30)
     pa.add_argument("--findings_out", default=None)
+    # 模式 B：列分桶
+    pa.add_argument("--bucket_col", default=None,
+                    help="非时间维度分桶：指定任意离散列（版本号/活动批次/渠道等）；与 --granularity 互斥")
+    pa.add_argument("--bucket_order", default=None,
+                    help="列分桶桶顺序，逗号分隔，如 v1.0,v2.0,v3.0；不传则按出现顺序")
+    # 自定义区间
+    pa.add_argument("--custom_ranges", default=None,
+                    help='自定义区间，JSON 数组：[["双11前","2026-10-01","2026-11-10"],...]；--granularity=custom_ranges 时必传')
 
     pe = sub.add_parser("export", help="findings + conclusions → Excel")
     pe.add_argument("--findings", required=True)
