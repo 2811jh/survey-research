@@ -57,6 +57,47 @@ def bucketize(dt_series, granularity):
     return labels, list(order.index)
 
 
+def quarter_label(dt):
+    q = (dt.month - 1) // 3 + 1
+    return f"{str(dt.year)[2:]}年Q{q}"
+
+
+def _bucketize_quarter(dt_series):
+    """按季度分桶。返回 (label_series, ordered_labels)。"""
+    labels = dt_series.apply(lambda d: quarter_label(d) if pd.notna(d) else None)
+    valid = pd.DataFrame({"label": labels, "dt": dt_series}).dropna(subset=["label"])
+    order = valid.groupby("label")["dt"].min().sort_values()
+    return labels, list(order.index)
+
+
+def _bucketize_custom(dt_series, custom_ranges):
+    """按自定义区间分桶。custom_ranges = [[label, start, end], ...]。
+    区间为左闭右闭（含两端日期）。返回 (label_series, ordered_labels)。"""
+    if not custom_ranges:
+        raise ValueError("granularity=custom_ranges 时必须传 --custom_ranges")
+    parsed = []
+    for item in custom_ranges:
+        if len(item) != 3:
+            raise ValueError(f"custom_ranges 每项需为 [label, start, end]，实际：{item}")
+        label, start, end = item
+        parsed.append((label, pd.to_datetime(start), pd.to_datetime(end)))
+
+    def _label_for(d):
+        if pd.isna(d):
+            return None
+        for label, start, end in parsed:
+            if start <= d <= end:
+                return label
+        return None
+
+    labels = dt_series.apply(_label_for)
+    ordered = [item[0] for item in parsed]
+    # 过滤掉空桶
+    present = set(labels.dropna().unique())
+    ordered = [b for b in ordered if b in present]
+    return labels, ordered
+
+
 # ===================== 统计基元 ===================== #
 
 def two_prop_z(c1, n1, c2, n2):
@@ -357,11 +398,40 @@ def _multi_choice_label(root, subcols):
 
 
 def build_findings(df, classification, granularity, time_col,
-                   nps_col, satisfaction_cols, min_n=30):
-    if time_col not in df.columns:
-        raise KeyError(f"时间列不存在：{time_col}")
-    dt = pd.to_datetime(df[time_col], errors="coerce")
-    labels, ordered = bucketize(dt, granularity)
+                   nps_col, satisfaction_cols, min_n=30,
+                   bucket_col=None, bucket_order=None,
+                   custom_ranges=None, time_col_source="default"):
+    # 模式 B：列分桶
+    if bucket_col:
+        if bucket_col not in df.columns:
+            raise KeyError(f"分桶列不存在：{bucket_col}")
+        labels = df[bucket_col].astype(str)
+        if bucket_order:
+            ordered = [b for b in bucket_order if b in labels.unique()]
+            # 补上 order 里没有的桶（避免丢数据）
+            extras = [b for b in labels.unique() if b not in ordered]
+            ordered = ordered + extras
+        else:
+            # 按出现顺序去重
+            ordered = list(dict.fromkeys(labels.tolist()))
+        bucket_mode = "column"
+        granularity_out = None
+        time_col_out = None
+    else:
+        # 模式 A：时间分桶
+        if time_col not in df.columns:
+            raise KeyError(f"时间列不存在：{time_col}")
+        dt = pd.to_datetime(df[time_col], errors="coerce")
+        if granularity == "custom_ranges":
+            labels, ordered = _bucketize_custom(dt, custom_ranges)
+        elif granularity == "quarter":
+            labels, ordered = _bucketize_quarter(dt)
+        else:
+            labels, ordered = bucketize(dt, granularity)
+        bucket_mode = "time"
+        granularity_out = granularity
+        time_col_out = time_col
+
     sizes_all = {b: int((labels == b).sum()) for b in ordered}
     low_n_buckets = [b for b, n in sizes_all.items() if n < min_n]
 
@@ -436,7 +506,11 @@ def build_findings(df, classification, granularity, time_col,
         })
 
     return {
-        "granularity": granularity, "time_col": time_col,
+        "granularity": granularity_out, "time_col": time_col_out,
+        "time_col_source": time_col_source,
+        "bucket_mode": bucket_mode,
+        "bucket_col": bucket_col,
+        "custom_ranges": custom_ranges,
         "buckets": ordered, "bucket_sizes": sizes_all, "low_n_buckets": low_n_buckets,
         "metrics": metrics, "questions": questions,
         "nps_col": nps_col, "satisfaction_cols": metric_cols,

@@ -44,3 +44,50 @@ def test_detect_关键词命中但非时间类型不误判():
     col, source = detect_time_col(df, None)
     assert col is None
     assert source == "not_found"
+
+
+import numpy as np
+from survey_drift import build_findings
+
+
+def _make_classification():
+    return {
+        "single_choice": ["Q1.满意度", "Q2.性别"],
+        "multi_choice": {},
+        "matrix_scale": {},
+        "text": [],
+        "meta": [],
+        "excluded": [],
+        "valid_for_crosstab": ["Q1.满意度", "Q2.性别"],
+    }
+
+
+def test_build_findings_列分桶模式():
+    df = pd.DataFrame({
+        "Q35.用户版本号": ["v1.0", "v1.0", "v2.0", "v2.0", "v3.0", "v3.0"],
+        "Q1.满意度": [5, 4, 3, 2, 1, 5],
+        "Q2.性别": [1, 2, 1, 2, 1, 2],
+    })
+    cls = _make_classification()
+    findings = build_findings(df, cls, granularity=None, time_col=None,
+                             nps_col=None, satisfaction_cols=None, min_n=2,
+                             bucket_col="Q35.用户版本号")
+    assert findings["bucket_mode"] == "column"
+    assert findings["bucket_col"] == "Q35.用户版本号"
+    assert findings["buckets"] == ["v1.0", "v2.0", "v3.0"]
+    assert findings["granularity"] is None
+    assert "time_col_source" in findings
+
+
+def test_build_findings_列分桶_显式顺序():
+    df = pd.DataFrame({
+        "Q35.用户版本号": ["v1.0", "v1.0", "v2.0", "v2.0", "v3.0", "v3.0"],
+        "Q1.满意度": [5, 4, 3, 2, 1, 5],
+        "Q2.性别": [1, 2, 1, 2, 1, 2],
+    })
+    cls = _make_classification()
+    findings = build_findings(df, cls, granularity=None, time_col=None,
+                             nps_col=None, satisfaction_cols=None, min_n=2,
+                             bucket_col="Q35.用户版本号",
+                             bucket_order=["v3.0", "v2.0", "v1.0"])
+    assert findings["buckets"] == ["v3.0", "v2.0", "v1.0"]
