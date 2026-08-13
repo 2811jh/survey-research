@@ -67,6 +67,49 @@ def _detect_csv_encoding(filepath, sample_size=8192):
         return 'gbk'
 
 
+# ========================================================================= #
+#                    文件命名 + 五点量表识别（通用化）                    #
+# ========================================================================= #
+
+_DEMOGRAPHIC_SHORT_KEYWORDS = ["性别", "年龄", "职业", "付费", "充值", "会员", "渠道", "地区", "城市", "设备"]
+
+
+def _short_col_label(col):
+    """从列名提取简短 label：Q33.请问您的性别是？ → 性别。"""
+    s = str(col)
+    m = re.match(r"Q\d+\.\s*(.+)", s)
+    s = m.group(1) if m else s
+    for kw in _DEMOGRAPHIC_SHORT_KEYWORDS:
+        if kw in s:
+            return kw
+    return s[:8]
+
+
+def default_output_filename(col_questions, file_path):
+    """多分组用 _按{简称1}_{简称2}_{简称3}"""
+    short_names = [_short_col_label(c) for c in col_questions]
+    base = os.path.splitext(os.path.basename(file_path))[0]
+    return f"{base}_交叉分析_按{'_'.join(short_names)}.xlsx"
+
+
+def _five_point_scale_series(series):
+    """判断某列是否五点量表（取值均为 1~5 的整数编码，且至少出现 4 个不同值）。"""
+    non_null = series.dropna()
+    if len(non_null) == 0:
+        return False
+    vals = set()
+    for v in non_null.unique():
+        try:
+            fv = float(v)
+        except (ValueError, TypeError):
+            return False
+        iv = int(fv)
+        if fv != iv:
+            return False
+        vals.add(iv)
+    return bool(vals) and vals.issubset({1, 2, 3, 4, 5}) and max(vals) == 5 and len(vals) >= 4
+
+
 def _extract_subcol_number(subcol: str, prefix: str) -> int:
     """从多选子列名中提取选项序号"""
     suffix = subcol.split(prefix)[1].strip()

@@ -37,3 +37,43 @@ def test_identify_demographic_无人口学题返回空():
     }
     candidates = identify_demographic_cols(df, classification)
     assert candidates == []
+
+
+from crosstab import _short_col_label, default_output_filename, _five_point_scale_series
+
+
+def test_short_col_label_提取关键词():
+    assert _short_col_label("Q33.请问您的性别是？") == "性别"
+    assert _short_col_label("Q34.请问您的年龄是？") == "年龄"
+    assert _short_col_label("Q35.请问您的职业是？") == "职业"
+    assert _short_col_label("Q50.付费等级") == "付费"
+
+
+def test_short_col_label_无关键词截断():
+    assert _short_col_label("Q10.您最喜欢的玩法") == "您最喜欢的玩法"
+
+
+def test_default_output_filename_单分组():
+    name = default_output_filename(["Q33.请问您的性别是？"], "survey_123_数据.csv")
+    assert name == "survey_123_数据_交叉分析_按性别.xlsx"
+
+
+def test_default_output_filename_多分组():
+    cols = ["Q33.请问您的性别是？", "Q34.请问您的年龄是？", "Q35.请问您的职业是？"]
+    name = default_output_filename(cols, "survey_123_数据.csv")
+    assert name == "survey_123_数据_交叉分析_按性别_年龄_职业.xlsx"
+
+
+def test_five_point_scale_series_识别():
+    s = pd.Series([5, 4, 3, 2, 1, 5, 4, 4, 3, 5])
+    assert _five_point_scale_series(s) is True
+
+
+def test_five_point_scale_series_排除二元():
+    s = pd.Series([1, 2, 1, 2, 1])
+    assert _five_point_scale_series(s) is False
+
+
+def test_five_point_scale_series_排除NPS():
+    s = pd.Series([0, 1, 5, 7, 8, 9, 10, 3, 6, 4])
+    assert _five_point_scale_series(s) is False
