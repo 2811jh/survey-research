@@ -970,19 +970,22 @@ def _apply_significance_heatmap(ws, percent_df, col_labels, significance_matrix,
 
 def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
     """
-    得分分析 sheet 格式化（Slate + Indigo 风格 + 最大差异标注）。
+    得分分析 sheet 格式化（Slate + Indigo 风格 + DataBar 趋势条）。
 
-    - 表头 slate-800 + 白字，行高 38
-    - 索引列（题目/指标）indigo-100 + indigo-900
-    - 得分值 size 11 粗体 indigo-700 居中
-    - 末尾追加"最大差异"列：▲ +X.X（绿字，>=5pp）/ — +X.X（slate-400，<5pp）
+    行类型区分（Task 4 起得分 DataFrame 含样本量行）：
+    - 得分行（满意度 1-5 / NPS）：size 11 bold indigo-700，行高 22，
+      总计列 indigo-100 底；满意度行加 DataBar(1-5)，NPS 行加 DataBar(-1..1)
+    - 样本量行：size 9 slate-400，行高 18，格式 #,##0，无 DataBar
+    - 末尾"最大差异"列：得分行 ▲/— 标注，样本量行留空
     - freeze_panes C2，showGridLines False
     """
+    ws.conditional_formatting = ConditionalFormattingList()  # 清空既有规则
+
     max_row = ws.max_row
     max_col = ws.max_column
     border = thin_border()
 
-    # 先写表头：原 max_col 列 + 追加"最大差异"列
+    # 追加"最大差异"列
     diff_col = max_col + 1
 
     # 表头行
@@ -993,63 +996,113 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
         cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
         cell.alignment = ALIGN_CENTER
         cell.border = border
-    # "最大差异"表头（如该列原无内容则写入标题）
     if ws.cell(row=1, column=diff_col).value is None:
         ws.cell(row=1, column=diff_col, value="最大差异")
 
     # 非总计列（用于计算得分跨组 max-min）
-    non_total_cols = [c for c in col_labels if not str(c).endswith("\n总计")]
+    non_total_labels = [c for c in col_labels if not str(c).endswith("\n总计")]
     col_to_ws_col = {}
     for ci, label in enumerate(col_labels, start=1):
         col_to_ws_col[label] = n_index_cols + ci
 
-    # 数据行
+    score_rows = []   # 满意度得分行（1-5 刻度）
+    nps_rows = []     # NPS 得分行（-1..1）
+    sample_rows = []  # 样本量行
+
+    # 数据行：分类 + 差异化样式
     for row_idx in range(2, max_row + 1):
-        ws.row_dimensions[row_idx].height = 26
-        indicator_val = str(ws.cell(row=row_idx, column=2).value or "")
-        is_nps = "NPS" in indicator_val
-        zebra = TR.WHITE if row_idx % 2 == 0 else TR.ZEBRA_ALT
+        idx_val = str(ws.cell(row=row_idx, column=n_index_cols).value or "")
+        is_sample = "样本量" in idx_val
+        is_nps = "NPS" in idx_val
 
-        # 计算该得分行跨分组的 max-min
-        score_vals = []
-        for label in non_total_cols:
-            cidx = col_to_ws_col.get(label)
-            if cidx is None:
-                continue
-            v = ws.cell(row=row_idx, column=cidx).value
-            try:
-                score_vals.append(float(v))
-            except (TypeError, ValueError):
-                pass
-
-        if score_vals:
-            delta = max(score_vals) - min(score_vals)
-        else:
-            delta = 0.0
-
-        for col_idx in range(1, diff_col + 1):
+        # 索引列（A/B）
+        for col_idx in range(1, n_index_cols + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+            cell.font = Font(name=Theme.FONT_NAME, size=10,
+                            bold=(col_idx == 1), color=TR.INDIGO_DEEP)
+            cell.alignment = ALIGN_LEFT
             cell.border = border
-            if col_idx <= n_index_cols:
-                cell.fill = make_fill(TR.INDIGO_ACCENT_BG)
-                cell.font = Font(name=Theme.FONT_NAME, size=10,
-                                bold=(col_idx == 1), color=TR.INDIGO_DEEP)
-                cell.alignment = ALIGN_LEFT
-            elif col_idx == diff_col:
-                # 最大差异标注列
-                cell.fill = make_fill(zebra)
-                if delta >= DIFF_THRESHOLD:
-                    cell.value = f"▲ +{delta:.2f}"
-                    cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_UP_FONT)
-                else:
-                    cell.value = f"— +{delta:.2f} (不显著)"
-                    cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
+
+        if is_sample:
+            # 样本量行：size 9 slate-400，无 DataBar
+            sample_rows.append(row_idx)
+            ws.row_dimensions[row_idx].height = 18
+            for col_idx in range(n_index_cols + 1, max_col + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.fill = make_fill(TR.WHITE)
+                cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
                 cell.alignment = ALIGN_CENTER
+                cell.border = border
+                cell.number_format = '#,##0'
+            # 最大差异列：样本量行留空
+            dcell = ws.cell(row=row_idx, column=diff_col)
+            dcell.fill = make_fill(TR.WHITE)
+            dcell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
+            dcell.alignment = ALIGN_CENTER
+            dcell.border = border
+        else:
+            # 得分行（满意度或 NPS）：size 11 bold indigo-700
+            ws.row_dimensions[row_idx].height = 22
+
+            # 跨分组 max-min
+            score_vals = []
+            for label in non_total_labels:
+                cidx = col_to_ws_col.get(label)
+                if cidx is None:
+                    continue
+                v = ws.cell(row=row_idx, column=cidx).value
+                try:
+                    score_vals.append(float(v))
+                except (TypeError, ValueError):
+                    pass
+            delta = (max(score_vals) - min(score_vals)) if score_vals else 0.0
+
+            if is_nps:
+                nps_rows.append(row_idx)
+                num_fmt = '0.0%'
             else:
-                cell.fill = make_fill(zebra)
+                score_rows.append(row_idx)
+                num_fmt = '0.00'
+
+            for col_idx in range(n_index_cols + 1, max_col + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                label = (col_labels[col_idx - n_index_cols - 1]
+                         if (col_idx - n_index_cols - 1) < len(col_labels) else None)
+                is_total = label is not None and str(label).endswith("\n总计")
+                cell.fill = make_fill(TR.INDIGO_ACCENT_BG if is_total else TR.WHITE)
                 cell.font = Font(name=Theme.FONT_NAME, size=11, bold=True, color=TR.INDIGO_MAIN)
                 cell.alignment = ALIGN_CENTER
-                cell.number_format = '0.0%' if is_nps else '0.00'
+                cell.border = border
+                cell.number_format = num_fmt
+
+            # 最大差异列
+            dcell = ws.cell(row=row_idx, column=diff_col)
+            dcell.fill = make_fill(TR.WHITE)
+            dcell.alignment = ALIGN_CENTER
+            dcell.border = border
+            if delta >= DIFF_THRESHOLD:
+                dcell.value = f"▲ +{delta:.2f}"
+                dcell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_UP_FONT)
+            else:
+                dcell.value = f"— +{delta:.2f} (不显著)"
+                dcell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
+
+    # DataBar：仅得分行。行与样本量行交错，故按单格添加规则，避免样本量行被波及。
+    def _add_databar(rows, start_value, end_value):
+        for r in rows:
+            for col_idx in range(n_index_cols + 1, max_col + 1):
+                col_letter = get_column_letter(col_idx)
+                rule = DataBarRule(
+                    start_type='num', start_value=start_value,
+                    end_type='num', end_value=end_value,
+                    color=TR.INDIGO_CHIP, showValue=True,
+                    minLength=0, maxLength=100,
+                )
+                ws.conditional_formatting.add(f"{col_letter}{r}", rule)
+
+    _add_databar(score_rows, 1, 5)     # 满意度 1-5
+    _add_databar(nps_rows, -1, 1)      # NPS -1..1
 
     # 列宽
     ws.column_dimensions['A'].width = 34
