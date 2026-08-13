@@ -95,3 +95,12 @@ python {SKILL_DIR}/scripts/survey_download.py download --id 问卷ID --clean --t
 - 通过**选项文本关键词**分类：年轻/年长、学生/工作人群、量表分值
 - **陷阱选项**通过 `logic`（门控关系）+ 选项 `mutex`（互斥标记）+ 否定文本三重信号识别，不硬编码题号
 - 缺失题目时相关规则自动跳过，不报错
+
+## 后续操作
+
+清洗 + 下载完成后可衔接的分析流程：
+
+- **做异动诊断**（按周/月/天/季度/自定义区间/列分桶对比各题异动）→ 读取 `18-drift-workflow.md`，
+  用清洗后下载返回 JSON 中 `files.quantified_data` 的文件路径作为 `survey_drift.py analyze --file_path` 的输入。
+  分桶基于清洗后数据，排除无效作答的影响。
+- **做基础统计 / 交叉分析 / 文本分析** → 回到 SKILL.md 主流程。

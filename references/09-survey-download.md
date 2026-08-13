@@ -115,3 +115,12 @@ python {SKILL_DIR}/scripts/survey_download.py download --id 确定的ID --output
 │   └── survey_xxx【量化数据】xxx_2.csv                ← 分片 2 副本
 └── survey_xxx【量化数据】xxx.csv                       ← 合并后的最终文件（去水印干净）
 ```
+
+## 后续操作
+
+下载完成后可衔接的分析流程：
+
+- **做异动诊断**（按周/月/天/季度/自定义区间/列分桶对比各题异动）→ 读取 `18-drift-workflow.md`，
+  用下载返回 JSON 中 `files.quantified_data` 的文件路径作为 `survey_drift.py analyze --file_path` 的输入。
+  下载的量化数据默认带 `结束答题时间` 列，与异动诊断默认时间列对齐，无需额外配置。
+- **做基础统计 / 交叉分析 / 文本分析** → 回到 SKILL.md 主流程，按阶段 1→2→3→4 顺序执行。
