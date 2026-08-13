@@ -540,8 +540,21 @@ def test_summary_scope_all_includes_historical_drift(tmp_path):
 
 def test_default_output_filename():
     name = survey_drift.default_output_filename("week")
-    assert name.startswith("回流异动诊断_按周_")
+    assert name.startswith("问卷异动诊断_按周_")
     assert name.endswith(".xlsx")
+
+
+def test_default_output_filename_列分桶去Q前缀():
+    """列分桶模式：label 取列名去掉 Q\\d+. 前缀（Task 1 引入 _short_col_label）。"""
+    name = survey_drift.default_output_filename("week", bucket_col="Q35.用户版本号")
+    assert name.startswith("问卷异动诊断_用户版本号_")
+    assert name.endswith(".xlsx")
+
+
+def test_default_output_filename_新粒度label():
+    """quarter→按季度、custom_ranges→按自定义区间（Task 1 新增 label 映射）。"""
+    assert survey_drift.default_output_filename("quarter").startswith("问卷异动诊断_按季度_")
+    assert survey_drift.default_output_filename("custom_ranges").startswith("问卷异动诊断_按自定义区间_")
 
 
 def test_full_pipeline_smoke(tmp_path):

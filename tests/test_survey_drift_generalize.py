@@ -91,3 +91,52 @@ def test_build_findings_列分桶_显式顺序():
                              bucket_col="Q35.用户版本号",
                              bucket_order=["v3.0", "v2.0", "v1.0"])
     assert findings["buckets"] == ["v3.0", "v2.0", "v1.0"]
+
+
+def test_build_findings_季度粒度():
+    df = pd.DataFrame({
+        "结束答题时间": pd.to_datetime(["2026-01-15", "2026-04-15", "2026-07-15", "2026-10-15"]),
+        "Q1.满意度": [5, 4, 3, 2],
+    })
+    cls = {"single_choice": ["Q1.满意度"], "multi_choice": {}, "matrix_scale": {},
+           "text": [], "meta": [], "excluded": [], "valid_for_crosstab": ["Q1.满意度"]}
+    findings = build_findings(df, cls, granularity="quarter", time_col="结束答题时间",
+                              nps_col=None, satisfaction_cols=None, min_n=1,
+                              time_col_source="default")
+    assert findings["bucket_mode"] == "time"
+    assert findings["granularity"] == "quarter"
+    assert len(findings["buckets"]) == 4
+    assert findings["buckets"][0] == "26年Q1"
+
+
+def test_build_findings_自定义区间():
+    df = pd.DataFrame({
+        "结束答题时间": pd.to_datetime(["2026-10-15", "2026-11-12", "2026-11-20", "2026-11-25"]),
+        "Q1.满意度": [5, 4, 3, 2],
+    })
+    cls = {"single_choice": ["Q1.满意度"], "multi_choice": {}, "matrix_scale": {},
+           "text": [], "meta": [], "excluded": [], "valid_for_crosstab": ["Q1.满意度"]}
+    ranges = [["双11前", "2026-10-01", "2026-11-10"],
+              ["双11期", "2026-11-11", "2026-11-13"],
+              ["双11后", "2026-11-14", "2026-11-30"]]
+    findings = build_findings(df, cls, granularity="custom_ranges", time_col="结束答题时间",
+                              nps_col=None, satisfaction_cols=None, min_n=1,
+                              custom_ranges=ranges, time_col_source="default")
+    assert findings["bucket_mode"] == "time"
+    assert findings["granularity"] == "custom_ranges"
+    assert "双11前" in findings["buckets"]
+    assert "双11期" in findings["buckets"]
+    assert "双11后" in findings["buckets"]
+
+
+def test_time_col_source_字段写入_findings():
+    df = pd.DataFrame({
+        "结束答题时间": pd.date_range("2026-01-01", periods=3),
+        "Q1.满意度": [5, 4, 3],
+    })
+    cls = {"single_choice": ["Q1.满意度"], "multi_choice": {}, "matrix_scale": {},
+           "text": [], "meta": [], "excluded": [], "valid_for_crosstab": ["Q1.满意度"]}
+    findings = build_findings(df, cls, granularity="week", time_col="结束答题时间",
+                              nps_col=None, satisfaction_cols=None, min_n=1,
+                              time_col_source="default")
+    assert findings["time_col_source"] == "default"
