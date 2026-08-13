@@ -653,6 +653,25 @@ def _extract_dim_from_label(label):
     return s
 
 
+def _extract_col_dimensions(ct_result: dict) -> list:
+    """提取各分组维度信息。
+
+    Returns:
+        [{"question": dim, "values": [分组列标签...], "total_label": 总计列标签}]
+    """
+    col_labels = ct_result["col_labels"]
+    dim_map = {}
+    for label in col_labels:
+        dim = _extract_dim_from_label(label)
+        if dim not in dim_map:
+            dim_map[dim] = {"question": dim, "values": [], "total_label": None}
+        if str(label).endswith("\n总计"):
+            dim_map[dim]["total_label"] = label
+        else:
+            dim_map[dim]["values"].append(label)
+    return list(dim_map.values())
+
+
 def calc_significance(ct_result: dict) -> dict:
     """对每个分组维度的各分组值 vs 该维度总计列，逐选项做两比例 z 检验。
 
@@ -713,49 +732,32 @@ def calc_significance(ct_result: dict) -> dict:
 #                      差异摘要
 # ========================================================================= #
 
-def get_crosstab_summary(ct_result: dict) -> dict:
-    """提取关键差异摘要"""
-    percent_df = ct_result["percent_df"]
-    col_labels = ct_result["col_labels"]
+def get_crosstab_summary(ct_result: dict, significance_matrix: dict = None) -> dict:
+    """生成差异摘要：基于 vs 分组维度总计的显著性。
 
-    total_cols = [c for c in col_labels if c.endswith("\n总计")]
-    non_total_cols = [c for c in col_labels if not c.endswith("\n总计")]
+    每个分组维度取差异最大的显著选项，输出
+    {dim: {max_diff_option, max_delta_pp, direction, significant, group}}。
+    无显著项时该维度不出现。
+    """
+    if significance_matrix is None:
+        significance_matrix = calc_significance(ct_result)
 
-    summary = {}
-
-    for question in percent_df.index.get_level_values(0).unique():
-        q_data = percent_df.xs(question, level=0)
-        option_rows = [opt for opt in q_data.index if opt != "总计"]
-        if not option_rows:
-            continue
-
-        question_summary = {
-            "options": {},
-            "max_diff_option": None,
-            "max_diff_value": 0,
-        }
-
-        for opt in option_rows:
-            opt_percents = {}
-            for col in non_total_cols:
-                pct = float(q_data.loc[opt, col]) if opt in q_data.index else 0
-                opt_percents[col] = round(pct, 4)
-
-            pct_values = list(opt_percents.values())
-            diff = max(pct_values) - min(pct_values) if pct_values else 0
-
-            question_summary["options"][str(opt)] = {
-                "percentages": opt_percents,
-                "max_min_diff": round(diff, 4),
-            }
-
-            if diff > question_summary["max_diff_value"]:
-                question_summary["max_diff_value"] = round(diff, 4)
-                question_summary["max_diff_option"] = str(opt)
-
-        summary[question] = question_summary
-
-    return summary
+    diff_summary = {}
+    for dim, groups in significance_matrix.items():
+        for group_col, options in groups.items():
+            for option, info in options.items():
+                if not info["significant"]:
+                    continue
+                # 以维度为 key，找该维度下差异最大的显著项
+                if dim not in diff_summary or abs(info["delta_pp"]) > abs(diff_summary[dim].get("max_delta_pp", 0)):
+                    diff_summary[dim] = {
+                        "max_diff_option": option,
+                        "max_delta_pp": info["delta_pp"],
+                        "direction": info["direction"],
+                        "significant": True,
+                        "group": group_col,
+                    }
+    return diff_summary
 
 
 # ========================================================================= #
@@ -1050,8 +1052,13 @@ def export_crosstab_excel(
     ct_result: dict,
     output_path: str,
     score_df: Optional[pd.DataFrame] = None,
+    significance_matrix: dict = None,
+    col_dimensions: list = None,
 ) -> str:
-    """导出交叉分析 Excel 报告（Slate + Indigo 视觉风格）。"""
+    """导出交叉分析 Excel 报告（Slate + Indigo 视觉风格）。
+
+    significance_matrix / col_dimensions 为后续可视化任务预留（Tasks 7-9）。
+    """
     freq_df = ct_result["freq_df"]
     percent_df = ct_result["percent_df"]
     col_labels = ct_result["col_labels"]
@@ -1092,6 +1099,8 @@ def _generate_output_json(
     diff_summary: dict,
     score_df: Optional[pd.DataFrame],
     output_path: str,
+    significance_matrix: dict = None,
+    col_dimensions: list = None,
 ) -> dict:
     """生成 stdout JSON 输出"""
     freq_df = ct_result["freq_df"]
@@ -1129,6 +1138,8 @@ def _generate_output_json(
         "percent_table": percent_summary,
         "diff_summary": diff_summary,
         "score_summary": score_summary,
+        "significant_matrix": significance_matrix,
+        "col_dimensions": col_dimensions,
     }
 
 
@@ -1170,6 +1181,17 @@ def run_crosstab_pipeline(
 
     classification = classify_columns(df)
 
+    # auto 模式：识别候选分组维度
+    if col_questions == ["auto"]:
+        from load_and_classify import identify_demographic_cols
+        candidates = identify_demographic_cols(df, classification)
+        if not candidates:
+            return {"status": "need_input", "reason": "no_demographic",
+                    "message": "未识别到人口学题，请用 --col_questions 指定分组列"}
+        return {"status": "need_input", "reason": "col_candidates",
+                "candidates": candidates,
+                "message": "识别到以下候选分组维度，请选择"}
+
     # 合并选项
     if merge_rules:
         for col_name, rules in merge_rules.items():
@@ -1201,19 +1223,28 @@ def run_crosstab_pipeline(
         except json.JSONDecodeError:
             pass
 
-    # 差异摘要
-    diff_summary = get_crosstab_summary(ct_result)
+    # 显著性检验（vs 分组维度总计）
+    significance_matrix = calc_significance(ct_result)
 
-    # 输出路径
+    # 分组维度信息
+    col_dimensions = _extract_col_dimensions(ct_result)
+
+    # 差异摘要（基于显著性 vs 分组维度总计）
+    diff_summary = get_crosstab_summary(ct_result, significance_matrix)
+
+    # 输出路径（未指定时用 default_output_filename）
     if output_path is None:
-        base = os.path.splitext(file_path)[0]
-        output_path = f"{base}_交叉分析.xlsx"
+        output_path = os.path.join(
+            os.path.dirname(os.path.abspath(file_path)),
+            default_output_filename(col_questions, file_path),
+        )
 
     # 导出 Excel
-    export_crosstab_excel(ct_result, output_path, score_df)
+    export_crosstab_excel(ct_result, output_path, score_df, significance_matrix, col_dimensions)
 
     # 生成 JSON 输出
-    return _generate_output_json(ct_result, diff_summary, score_df, output_path)
+    return _generate_output_json(ct_result, diff_summary, score_df, output_path,
+                                 significance_matrix, col_dimensions)
 
 
 # ========================================================================= #

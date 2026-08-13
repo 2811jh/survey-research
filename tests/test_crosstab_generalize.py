@@ -182,3 +182,25 @@ def test_calc_significance_vs_分组维度总计():
     assert info["significant"] is True
     assert info["direction"] == "up"
     assert abs(info["delta_pp"] - 10.0) < 0.1
+
+
+from crosstab import run_crosstab_pipeline
+
+
+def test_run_crosstab_pipeline_auto_返回候选():
+    df = pd.DataFrame({
+        "Q1.满意度": [5, 4, 3, 4, 5],
+        "Q33.请问您的性别是？": ["男", "女", "男", "女", "男"],
+        "Q34.请问您的年龄是？": ["18-24", "25-30", "18-24", "25-30", "18-24"],
+    })
+    df.to_csv("/tmp/test_crosstab_auto.csv", index=False, encoding="utf-8-sig")
+    result = run_crosstab_pipeline(
+        file_path="/tmp/test_crosstab_auto.csv",
+        row_questions=["all"],
+        col_questions=["auto"],
+        calc_scores_mode="auto",
+    )
+    assert result["status"] == "need_input"
+    assert result["reason"] == "col_candidates"
+    assert "Q33.请问您的性别是？" in result["candidates"]
+    assert "Q34.请问您的年龄是？" in result["candidates"]
