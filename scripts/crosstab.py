@@ -504,16 +504,18 @@ def _is_scoreable_question(question_name: str, df: pd.DataFrame) -> Optional[str
 
 
 def auto_detect_score_questions(df: pd.DataFrame, ct_result: dict) -> list:
-    """自动检测所有需要计算得分的题目"""
-    row_type_map = ct_result["valid_rows_map"]
-    freq_df = ct_result["freq_df"]
-
+    """自动识别可计算得分的题目：关键词（满意/NPS/推荐）∪ 五点量表自动检测。"""
     scoreable = []
-    for q_name in freq_df.index.get_level_values(0).unique():
-        if row_type_map.get(q_name) != "single":
+    valid_rows = ct_result["valid_rows_map"]
+    for q_name in valid_rows:
+        if valid_rows[q_name] != "single":
             continue
-        score_type = _is_scoreable_question(q_name, df)
-        if score_type is not None:
+        # 关键词识别
+        if _is_scoreable_question(q_name, df) is not None:
+            scoreable.append(q_name)
+            continue
+        # 五点量表自动检测
+        if q_name in df.columns and _five_point_scale_series(df[q_name]):
             scoreable.append(q_name)
     return scoreable
 

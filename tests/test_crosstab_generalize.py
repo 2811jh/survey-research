@@ -77,3 +77,22 @@ def test_five_point_scale_series_排除二元():
 def test_five_point_scale_series_排除NPS():
     s = pd.Series([0, 1, 5, 7, 8, 9, 10, 3, 6, 4])
     assert _five_point_scale_series(s) is False
+
+
+from crosstab import auto_detect_score_questions
+
+
+def test_auto_detect_score_纳入五点量表题():
+    """非满意度/NPS 关键词，但取值 1-5 的题应被识别。"""
+    df = pd.DataFrame({
+        "Q1.满意度": [5, 4, 3, 4, 5, 2, 1, 4, 5, 3],
+        "Q13.整体印象": [4, 3, 5, 4, 2, 3, 4, 5, 1, 4],
+        "Q2.性别": [1, 2, 1, 2, 1, 2, 1, 2, 1, 2],
+    })
+    ct_result = {
+        "valid_rows_map": {"Q1.满意度": "single", "Q13.整体印象": "single", "Q2.性别": "single"},
+    }
+    scoreable = auto_detect_score_questions(df, ct_result)
+    assert "Q1.满意度" in scoreable
+    assert "Q13.整体印象" in scoreable
+    assert "Q2.性别" not in scoreable
