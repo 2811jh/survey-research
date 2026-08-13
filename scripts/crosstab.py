@@ -598,6 +598,20 @@ def calc_scores(df: pd.DataFrame, ct_result: dict, score_questions: list) -> Opt
             score_results.append(nps_score)
             score_index.append((q, "NPS得分(%)"))
 
+        # 样本量行：该列分组下该题的有效作答数（紧跟得分行下方）
+        non_total_slice = q_slice[~q_slice.index.astype(str).isin(["总计", "合计", "Total"])]
+        sample_data = {}
+        for col_label in freq_df.columns:
+            col_str = str(col_label)
+            if col_str.endswith("\n总计") or col_str == "总计":
+                # 总计列样本量 = 该题全局有效作答数
+                sample_data[col_label] = int(df[q].notna().sum())
+            else:
+                # 分组列样本量 = 该分组下该题有效作答数（排除总计行）
+                sample_data[col_label] = int(non_total_slice[col_label].sum())
+        score_results.append(pd.Series(sample_data, index=freq_df.columns))
+        score_index.append((q, "样本量"))
+
     if not score_results:
         return None
 

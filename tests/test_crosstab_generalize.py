@@ -96,3 +96,40 @@ def test_auto_detect_score_纳入五点量表题():
     assert "Q1.满意度" in scoreable
     assert "Q13.整体印象" in scoreable
     assert "Q2.性别" not in scoreable
+
+
+from crosstab import calc_scores
+import pandas as pd
+
+
+def test_calc_scores_含样本量行():
+    """每个量表题的得分行下方应紧跟样本量行。"""
+    df = pd.DataFrame({
+        "Q1.满意度": [5, 4, 3, 4, 5, 2, 4, 5, 3, 4],
+        "Q33.性别": ["男", "女", "男", "女", "男", "女", "男", "女", "男", "女"],
+    })
+    # 构造最小 ct_result：freq_df 用真实 crosstab
+    freq = pd.crosstab(
+        df["Q1.满意度"].astype(str),
+        df["Q33.性别"],
+        margins=True, margins_name="Q33.性别\n总计",
+    )
+    freq.index = pd.MultiIndex.from_arrays(
+        [["Q1.满意度"] * len(freq), [str(x) for x in freq.index]],
+        names=["题目", "选项"],
+    )
+    ct_result = {
+        "freq_df": freq,
+        "valid_rows_map": {"Q1.满意度": "single"},
+        "col_labels": list(freq.columns),
+        "col_totals": {c: int(freq[c].sum()) for c in freq.columns},
+    }
+    score_df = calc_scores(df, ct_result, ["Q1.满意度"])
+    assert score_df is not None
+    indices = [str(idx) for idx in score_df.index]
+    assert any("得分" in i for i in indices), f"expected score row, got: {indices}"
+    assert any("样本量" in i for i in indices), f"expected sample size row, got: {indices}"
+    # 样本量行应该在得分行之后
+    score_idx = next(i for i, x in enumerate(indices) if "得分" in x)
+    sample_idx = next(i for i, x in enumerate(indices) if "样本量" in x)
+    assert sample_idx == score_idx + 1, f"sample row should follow score row: {indices}"
