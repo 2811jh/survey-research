@@ -40,6 +40,7 @@ from _styles import (
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import DataBarRule
+from openpyxl.formatting.formatting import ConditionalFormattingList
 
 
 # ---- 漂移分析视觉系统色板（与 survey_drift.py 一致）----
@@ -642,7 +643,7 @@ def two_prop_z(c1, n1, c2, n2):
     z = (p1 - p2) / se
     from scipy import stats
     p = 2 * (1 - stats.norm.cdf(abs(z)))
-    return round(z, 4), round(p, 4)
+    return round(float(z), 4), round(float(p), 4)
 
 
 def _extract_dim_from_label(label):
@@ -717,8 +718,8 @@ def calc_significance(ct_result: dict) -> dict:
                 z, p = two_prop_z(c_group, group_n, c_total, total_n)
                 p_group = c_group / group_n if group_n else 0
                 p_total = c_total / total_n if total_n else 0
-                delta_pp = round((p_group - p_total) * 100, 1)
-                significant = (p < 0.05) and (abs(delta_pp) >= 5)
+                delta_pp = round(float(p_group - p_total) * 100, 1)
+                significant = bool((p < 0.05) and (abs(delta_pp) >= 5))
                 direction = "up" if delta_pp > 0 else "down"
 
                 result[dim][group_value][str(option)] = {
@@ -891,6 +892,10 @@ def _apply_significance_heatmap(ws, percent_df, col_labels, significance_matrix,
     if not significance_matrix or percent_df is None or percent_df.empty:
         return
 
+    # Clear existing DataBar rules from _format_crosstab_sheet to avoid duplicates
+    # (non-total cols would otherwise get 2 DataBars; total col would get 1 unwanted)
+    ws.conditional_formatting = ConditionalFormattingList()
+
     border = thin_border()
     max_row = ws.max_row
     max_col = ws.max_column
@@ -938,12 +943,12 @@ def _apply_significance_heatmap(ws, percent_df, col_labels, significance_matrix,
                     current_val = cell.value
                     if info["direction"] == "up":
                         cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_UP_FONT)
-                        if current_val and "↑" not in str(current_val):
-                            cell.value = f"{current_val} ↑"
+                        if current_val is not None and "↑" not in str(current_val):
+                            cell.value = f"{float(current_val):.1%} ↑"
                     else:
                         cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_DOWN_FONT)
-                        if current_val and "↓" not in str(current_val):
-                            cell.value = f"{current_val} ↓"
+                        if current_val is not None and "↓" not in str(current_val):
+                            cell.value = f"{float(current_val):.1%} ↓"
                 break
 
     # DataBar：对所有非总计数据单元格加 indigo DataBar（刻度 0~1）
