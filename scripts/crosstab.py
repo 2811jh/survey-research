@@ -1275,6 +1275,23 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
     ws.freeze_panes = f"{freeze_col}2"
     ws.sheet_view.showGridLines = False
 
+    # ---- 底部口径说明（3 行，合并跨越所有列，参考显著性检验 Sheet）----
+    notes = [
+        "检验方式：Welch t 检验（两组独立样本，方差不齐），H0: 分组均分 = 该维度总计均分",
+        "显著门槛：p<0.05 且 |Δ均分|≥0.1",
+        "↑ = 分组均分显著高于该维度总计，↓ = 显著低于，— = 无显著差异",
+    ]
+    note_start = max_row + 2  # 空 1 行
+    for i, note in enumerate(notes):
+        r = note_start + i
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=max_col)
+        cell = ws.cell(row=r, column=1, value=note)
+        cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_SUB)
+        cell.fill = make_fill(TR.NOTE_BG)
+        cell.alignment = ALIGN_LEFT
+        cell.border = border
+        ws.row_dimensions[r].height = 20
+
 
 def _format_heatmap_sheet(ws, heatmap_df, col_dimensions):
     """格式化热力图 Sheet：渐变着色 + 分块 + 维度标题行。"""
