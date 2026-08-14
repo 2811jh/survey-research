@@ -430,6 +430,7 @@ def run_crosstab(
         "percent_df": percent_df,
         "col_totals": col_totals,
         "col_labels": col_labels,
+        "col_conditions": col_conditions,
         "valid_rows_map": {q: q_type for q_type, q in valid_rows},
         "invalid_rows": invalid_rows,
         "invalid_cols": invalid_cols,
@@ -613,6 +614,55 @@ def calc_scores(df: pd.DataFrame, ct_result: dict, score_questions: list) -> Opt
         score_results.append(pd.Series(sample_data, index=freq_df.columns))
         score_index.append((q, "样本量"))
 
+        # 显著标记行：各分组均分 vs 该维度总计均分（Welch t 检验，p<0.05 且 |Δ|≥0.1 才标显著）
+        # 该题的数值化得分序列（与得分行计算一致的 option→score 映射；
+        # freq_df 索引存的是 str(value)，故对 df[q] 逐值 str 化后提取分数，避免 dtype 不匹配）
+        numeric_series = df[q].apply(
+            lambda v: _extract_score_from_option(str(v)) if pd.notna(v) else None
+        )
+
+        # 构建 列标签 → 分组 mask（优先用 col_conditions，否则解析列标签反推）
+        label_to_mask = {}
+        col_conditions = ct_result.get("col_conditions") or []
+        for lab, cond in col_conditions:
+            label_to_mask[lab] = cond
+        # 预建 维度 → 该维度总计 mask（总计列 cond）
+        dim_to_total_mask = {}
+        for lab, cond in col_conditions:
+            if str(lab).endswith("\n总计"):
+                dim_to_total_mask[_extract_dim_from_label(lab)] = cond
+
+        marker_data = {}
+        for col_label in freq_df.columns:
+            col_str = str(col_label)
+            if col_str.endswith("\n总计") or col_str == "总计":
+                marker_data[col_label] = ""  # 总计列（基准列）不标
+                continue
+            mask = label_to_mask.get(col_label)
+            if mask is None:
+                dim_col, value = _parse_col_label(col_label)
+                if dim_col and dim_col in df.columns:
+                    mask = df[dim_col] == value
+            if mask is None:
+                marker_data[col_label] = "—"
+                continue
+            # 该维度总计均分（无维度总计 mask 时回退到全样本）
+            dim = _extract_dim_from_label(col_str)
+            total_mask = dim_to_total_mask.get(dim)
+            total_vals = (numeric_series[total_mask].dropna()
+                          if total_mask is not None else numeric_series.dropna())
+            group_vals = numeric_series[mask]
+            p_val, delta = _mean_t_test(group_vals, total_vals)
+            if p_val < 0.05 and abs(delta) >= 0.1:
+                if delta > 0:
+                    marker_data[col_label] = f"↑+{delta:.2f}"
+                else:
+                    marker_data[col_label] = f"↓{delta:.2f}"
+            else:
+                marker_data[col_label] = "—"
+        score_results.append(pd.Series(marker_data, index=freq_df.columns))
+        score_index.append((q, "显著标记"))
+
     if not score_results:
         return None
 
@@ -652,6 +702,36 @@ def _extract_dim_from_label(label):
     if "\n" in s:
         return s.split("\n")[0]
     return s
+
+
+def _parse_col_label(label):
+    """解析列标签 'Q33.性别\\n男' → ('Q33.性别', '男')。
+    总计列 → (None, None)。无 \\n 且非总计 → (None, label)（无法推断维度列）。"""
+    s = str(label)
+    if s.endswith("\n总计") or s == "总计":
+        return None, None
+    if "\n" in s:
+        parts = s.split("\n", 1)
+        return parts[0], parts[1]
+    return None, s
+
+
+def _mean_t_test(group_vals, total_vals):
+    """Welch t 检验（两组独立样本，方差不齐）。返回 (p, delta)，delta=组均分-总计均分。"""
+    from scipy import stats
+    g = pd.to_numeric(pd.Series(group_vals), errors="coerce").dropna()
+    t = pd.to_numeric(pd.Series(total_vals), errors="coerce").dropna()
+    if len(g) < 2 or len(t) < 2:
+        return 1.0, 0.0
+    delta = float(g.mean() - t.mean())
+    if g.std() == 0 and t.std() == 0:
+        return 1.0, round(delta, 2)
+    try:
+        _, p = stats.ttest_ind(g, t, equal_var=False)
+        p = float(p)
+    except Exception:
+        p = 1.0
+    return round(p, 4), round(delta, 2)
 
 
 def _extract_col_dimensions(ct_result: dict) -> list:
@@ -730,7 +810,10 @@ def calc_significance(ct_result: dict) -> dict:
 
 
 def calc_heatmap_data(ct_result, significance_matrix):
-    """生成热力图数据。返回 DataFrame，index=题目×选项，columns=各分组值，值=delta_pp。"""
+    """生成热力图数据。返回 DataFrame，index=题目×选项，columns=完整列标签（dim\\n值），值=delta_pp。
+
+    用完整列标签（而非裸分组值）做列名，避免不同维度同值列（如性别"1"/年龄"1"）合并。
+    """
     if not significance_matrix:
         return None
     # 收集所有 (dim, group_col_value) 对，保持维度顺序
@@ -748,9 +831,10 @@ def calc_heatmap_data(ct_result, significance_matrix):
             continue
         row_indices.append(idx)
 
-    # 构建 DataFrame
+    # 构建 DataFrame（列名用完整 dim\n值 标签，保证唯一）
     data = {}
     for dim, group_col_value in all_groups:
+        full_label = f"{dim}\n{group_col_value}"
         col_data = {}
         for idx in row_indices:
             option = str(idx[1] if isinstance(idx, tuple) else idx)
@@ -758,10 +842,61 @@ def calc_heatmap_data(ct_result, significance_matrix):
                 col_data[idx] = significance_matrix[dim][group_col_value][option]["delta_pp"]
             else:
                 col_data[idx] = 0.0
-        data[group_col_value] = col_data
+        data[full_label] = col_data
 
     heatmap_df = pd.DataFrame(data, index=row_indices)
     return heatmap_df
+
+
+def calc_significance_sheet_data(ct_result, significance_matrix):
+    """生成「显著性检验」Sheet 数据。
+
+    Returns:
+        DataFrame（index=题目×选项，排除总计行；columns=完整列标签（dim\\n值）；值=标记文本）
+        单元格文本：'↑+8.5pp\\np=0.003' / '↓-6.2pp\\np=0.02' / '—'
+        无显著性数据时返回 None。
+
+    列名用完整 dim\\n值 标签（而非裸分组值），避免不同维度同值列合并。
+    """
+    if not significance_matrix:
+        return None
+    # 收集所有 (dim, group_col_value) 对，保持维度顺序
+    all_groups = []
+    for dim, groups in significance_matrix.items():
+        for group_col_value in groups:
+            all_groups.append((dim, group_col_value))
+
+    # 收集所有行索引（题目×选项，排除总计行）
+    freq_df = ct_result["freq_df"]
+    row_indices = []
+    for idx in freq_df.index:
+        option = idx[1] if isinstance(idx, tuple) else idx
+        if str(option) in ("总计", "合计", "Total"):
+            continue
+        row_indices.append(idx)
+
+    # 构建 DataFrame（列名用完整 dim\n值 标签，保证唯一）
+    data = {}
+    for dim, group_col_value in all_groups:
+        full_label = f"{dim}\n{group_col_value}"
+        col_data = {}
+        for idx in row_indices:
+            option = str(idx[1] if isinstance(idx, tuple) else idx)
+            info = significance_matrix[dim][group_col_value].get(option)
+            if info is None or not info["significant"]:
+                col_data[idx] = "—"
+            else:
+                delta_pp = info["delta_pp"]
+                p = info["p"]
+                p_str = "p<0.0001" if p == 0.0 else f"p={p}"
+                if info["direction"] == "up":
+                    col_data[idx] = f"↑+{delta_pp}pp\n{p_str}"
+                else:
+                    col_data[idx] = f"↓{delta_pp}pp\n{p_str}"
+        data[full_label] = col_data
+
+    sig_df = pd.DataFrame(data, index=row_indices)
+    return sig_df
 
 
 # ========================================================================= #
@@ -816,9 +951,10 @@ def _format_crosstab_sheet(ws, is_percent=False, n_index_cols=2, has_total_col=T
     """
     交叉分析 sheet 格式化（Slate + Indigo 风格，对齐 survey_drift 明细表）。
 
-    - 表头：slate-800 底 + 白字粗体，行高 38
+    - 表头：slate-800 底 + 白字粗体 size 10，行高 38（与热力图表头一致）
     - 索引列（题目/选项）：indigo-100 底 + indigo-900 粗体左对齐
     - 总计行：indigo-100 底 + indigo-900 粗体（与索引列同视觉层级）
+    - 总计列（\n总计 结尾）：indigo-100 底（含表头行，表头深字）
     - 数据行：斑马纹（white / slate-100），TEXT_SUB 字色
     - DataBar：indigo-600，percent 固定 0~1 / freq 固定 0~max
     - 百分比格式 0.0% / 频数 0
@@ -900,6 +1036,19 @@ def _format_crosstab_sheet(ws, is_percent=False, n_index_cols=2, has_total_col=T
                     minLength=0, maxLength=100,
                 )
             ws.conditional_formatting.add(data_range, rule)
+
+    # ---- 总计列加 indigo-100 底（含表头行；表头行用深色字保证浅底可读）----
+    total_col_indices = set()
+    for col_idx in range(n_index_cols + 1, max_col + 1):
+        val = ws.cell(row=1, column=col_idx).value
+        if val and str(val).endswith("\n总计"):
+            total_col_indices.add(col_idx)
+    for col_idx in total_col_indices:
+        for r in range(1, max_row + 1):
+            ws.cell(row=r, column=col_idx).fill = make_fill(TR.INDIGO_ACCENT_BG)
+        # 表头行：浅底配深字
+        hcell = ws.cell(row=1, column=col_idx)
+        hcell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
 
     # ---- 列宽 ----
     ws.column_dimensions['A'].width = 34
@@ -1007,11 +1156,11 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
     """
     得分分析 sheet 格式化（Slate + Indigo 风格 + DataBar 趋势条）。
 
-    行类型区分（Task 4 起得分 DataFrame 含样本量行）：
-    - 得分行（满意度 1-5 / NPS）：size 11 bold indigo-700，行高 22，
+    三行一组（均分 / 样本量 / 显著标记）：
+    - 均分行（满意度 1-5 / NPS）：size 11 bold indigo-700，行高 22，
       总计列 indigo-100 底；满意度行加 DataBar(1-5)，NPS 行加 DataBar(-1..1)
     - 样本量行：size 9 slate-400，行高 18，格式 #,##0，无 DataBar
-    - 末尾"最大差异"列：得分行 ▲/— 标注，样本量行留空
+    - 显著标记行：size 9，↑绿 / ↓红 / —灰，无 DataBar；总计列空（基准列不标）
     - freeze_panes C2，showGridLines False
     """
     ws.conditional_formatting = ConditionalFormattingList()  # 清空既有规则
@@ -1020,34 +1169,23 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
     max_col = ws.max_column
     border = thin_border()
 
-    # 追加"最大差异"列
-    diff_col = max_col + 1
-
     # 表头行
     ws.row_dimensions[1].height = 38
-    for col_idx in range(1, diff_col + 1):
+    for col_idx in range(1, max_col + 1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = make_fill(TR.TITLE_BG)
         cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.WHITE)
         cell.alignment = ALIGN_CENTER
         cell.border = border
-    if ws.cell(row=1, column=diff_col).value is None:
-        ws.cell(row=1, column=diff_col, value="最大差异")
-
-    # 非总计列（用于计算得分跨组 max-min）
-    non_total_labels = [c for c in col_labels if not str(c).endswith("\n总计")]
-    col_to_ws_col = {}
-    for ci, label in enumerate(col_labels, start=1):
-        col_to_ws_col[label] = n_index_cols + ci
 
     score_rows = []   # 满意度得分行（1-5 刻度）
     nps_rows = []     # NPS 得分行（-1..1）
-    sample_rows = []  # 样本量行
 
-    # 数据行：分类 + 差异化样式
+    # 数据行：按指标名区分三种行类型
     for row_idx in range(2, max_row + 1):
         idx_val = str(ws.cell(row=row_idx, column=n_index_cols).value or "")
         is_sample = "样本量" in idx_val
+        is_marker = "显著标记" in idx_val
         is_nps = "NPS" in idx_val
 
         # 索引列（A/B）
@@ -1061,45 +1199,44 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
 
         if is_sample:
             # 样本量行：size 9 slate-400，无 DataBar
-            sample_rows.append(row_idx)
             ws.row_dimensions[row_idx].height = 18
             for col_idx in range(n_index_cols + 1, max_col + 1):
                 cell = ws.cell(row=row_idx, column=col_idx)
-                cell.fill = make_fill(TR.WHITE)
+                label = (col_labels[col_idx - n_index_cols - 1]
+                         if (col_idx - n_index_cols - 1) < len(col_labels) else None)
+                is_total = label is not None and str(label).endswith("\n总计")
+                cell.fill = make_fill(TR.INDIGO_ACCENT_BG if is_total else TR.WHITE)
                 cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
                 cell.alignment = ALIGN_CENTER
                 cell.border = border
                 cell.number_format = '#,##0'
-            # 最大差异列：样本量行留空
-            dcell = ws.cell(row=row_idx, column=diff_col)
-            dcell.fill = make_fill(TR.WHITE)
-            dcell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
-            dcell.alignment = ALIGN_CENTER
-            dcell.border = border
+        elif is_marker:
+            # 显著标记行：size 9，↑绿 / ↓红 / —灰，无 DataBar
+            ws.row_dimensions[row_idx].height = 18
+            for col_idx in range(n_index_cols + 1, max_col + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                label = (col_labels[col_idx - n_index_cols - 1]
+                         if (col_idx - n_index_cols - 1) < len(col_labels) else None)
+                is_total = label is not None and str(label).endswith("\n总计")
+                val_str = str(cell.value) if cell.value is not None else ""
+                cell.fill = make_fill(TR.INDIGO_ACCENT_BG if is_total else TR.WHITE)
+                cell.alignment = ALIGN_CENTER
+                cell.border = border
+                if val_str.startswith("↑"):
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=_UP_FONT)
+                elif val_str.startswith("↓"):
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, bold=True, color=_DOWN_FONT)
+                else:
+                    cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
         else:
-            # 得分行（满意度或 NPS）：size 11 bold indigo-700
+            # 均分行（满意度或 NPS）：size 11 bold indigo-700
             ws.row_dimensions[row_idx].height = 22
-
-            # 跨分组 max-min
-            score_vals = []
-            for label in non_total_labels:
-                cidx = col_to_ws_col.get(label)
-                if cidx is None:
-                    continue
-                v = ws.cell(row=row_idx, column=cidx).value
-                try:
-                    score_vals.append(float(v))
-                except (TypeError, ValueError):
-                    pass
-            delta = (max(score_vals) - min(score_vals)) if score_vals else 0.0
-
             if is_nps:
                 nps_rows.append(row_idx)
                 num_fmt = '0.0%'
             else:
                 score_rows.append(row_idx)
                 num_fmt = '0.00'
-
             for col_idx in range(n_index_cols + 1, max_col + 1):
                 cell = ws.cell(row=row_idx, column=col_idx)
                 label = (col_labels[col_idx - n_index_cols - 1]
@@ -1111,19 +1248,7 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
                 cell.border = border
                 cell.number_format = num_fmt
 
-            # 最大差异列
-            dcell = ws.cell(row=row_idx, column=diff_col)
-            dcell.fill = make_fill(TR.WHITE)
-            dcell.alignment = ALIGN_CENTER
-            dcell.border = border
-            if delta >= DIFF_THRESHOLD:
-                dcell.value = f"▲ +{delta:.2f}"
-                dcell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_UP_FONT)
-            else:
-                dcell.value = f"— +{delta:.2f} (不显著)"
-                dcell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_MUTE)
-
-    # DataBar：仅得分行。行与样本量行交错，故按单格添加规则，避免样本量行被波及。
+    # DataBar：仅均分行。行与样本量/标记行交错，故按单格添加规则。
     def _add_databar(rows, start_value, end_value):
         for r in rows:
             for col_idx in range(n_index_cols + 1, max_col + 1):
@@ -1143,7 +1268,7 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
     ws.column_dimensions['A'].width = 34
     if n_index_cols >= 2:
         ws.column_dimensions['B'].width = 26
-    for col_idx in range(n_index_cols + 1, diff_col + 1):
+    for col_idx in range(n_index_cols + 1, max_col + 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = 18
 
     freeze_col = get_column_letter(n_index_cols + 1)
@@ -1170,6 +1295,9 @@ def _format_heatmap_sheet(ws, heatmap_df, col_dimensions):
         return ("F8FAFC", "94A3B8")  # 非显著
 
     # 维度标题行（第 1 行）+ 分组值表头（第 2 行）
+    ws.row_dimensions[1].height = 38
+    ws.row_dimensions[2].height = 30
+    border = thin_border()
     ws.cell(row=1, column=1, value="题目")
     ws.cell(row=1, column=2, value="选项")
     ws.cell(row=2, column=1, value="题目")
@@ -1180,6 +1308,7 @@ def _format_heatmap_sheet(ws, heatmap_df, col_dimensions):
             cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
             cell.fill = make_fill(TR.TITLE_BG if r == 1 else TR.SUBTITLE_BG)
             cell.alignment = ALIGN_CENTER
+            cell.border = border
 
     # 按维度分块写列
     col_offset = 3  # 从 C 列开始
@@ -1192,6 +1321,7 @@ def _format_heatmap_sheet(ws, heatmap_df, col_dimensions):
         ws.cell(row=1, column=col_offset).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
         ws.cell(row=1, column=col_offset).fill = make_fill(TR.TITLE_BG)
         ws.cell(row=1, column=col_offset).alignment = ALIGN_CENTER
+        ws.cell(row=1, column=col_offset).border = border
         if n_values > 1:
             ws.merge_cells(start_row=1, start_column=col_offset, end_row=1, end_column=col_offset + n_values - 1)
         # 分组值表头
@@ -1201,28 +1331,44 @@ def _format_heatmap_sheet(ws, heatmap_df, col_dimensions):
             ws.cell(row=2, column=col_offset + i).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
             ws.cell(row=2, column=col_offset + i).fill = make_fill(TR.SUBTITLE_BG)
             ws.cell(row=2, column=col_offset + i).alignment = ALIGN_CENTER
+            ws.cell(row=2, column=col_offset + i).border = border
         col_offset += n_values + 1  # +1 间隔空列
+    total_cols = col_offset - 1  # 含末尾间隔列，用于底部说明合并范围
 
-    # 写数据行（从第 3 行起）
+    # 写数据行（从第 3 行起）：A 列按题目合并，B 列浅蓝底 + 深蓝字
+    prev_q = None
+    group_start_row = None
+    last_ws_row = 2
     for r_idx, idx in enumerate(heatmap_df.index):
         ws_row = r_idx + 3
+        last_ws_row = ws_row
         q, opt = (idx[0], idx[1]) if isinstance(idx, tuple) else (idx, "")
-        # A 列：题目
-        ws.cell(row=ws_row, column=1, value=q)
-        ws.cell(row=ws_row, column=1).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
-        ws.cell(row=ws_row, column=1).fill = make_fill(TR.INDIGO_ACCENT_BG)
-        # B 列：选项
-        ws.cell(row=ws_row, column=2, value=opt)
-        ws.cell(row=ws_row, column=2).font = Font(name=Theme.FONT_NAME, size=10, color=TR.TEXT_MAIN)
+        # A 列合并：相同题目连续行合并
+        if q != prev_q:
+            if group_start_row is not None and group_start_row < ws_row - 1:
+                ws.merge_cells(start_row=group_start_row, start_column=1, end_row=ws_row - 1, end_column=1)
+            ws.cell(row=ws_row, column=1, value=q)
+            group_start_row = ws_row
+            prev_q = q
+        acell = ws.cell(row=ws_row, column=1)
+        acell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
+        acell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+        acell.alignment = ALIGN_LEFT
+        acell.border = border
+        # B 列：浅蓝底 E0E7FF + 深蓝字 312E81
+        bcell = ws.cell(row=ws_row, column=2, value=opt)
+        bcell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.INDIGO_DEEP)
+        bcell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+        bcell.alignment = ALIGN_LEFT
+        bcell.border = border
 
         # 数据列
         col_offset = 3
         for dim_info in col_dimensions:
             for val_label in dim_info["values"]:
-                # heatmap_df 列名为裸分组值（\n 后部分），用其做查找
-                short_val = str(val_label).split("\n")[-1]
-                if short_val in heatmap_df.columns:
-                    delta = heatmap_df.at[idx, short_val]
+                # heatmap_df 列名为完整 dim\n值 标签（唯一），用其做查找
+                if val_label in heatmap_df.columns:
+                    delta = heatmap_df.at[idx, val_label]
                     fill_hex, font_hex = _heat_color(float(delta))
                     cell = ws.cell(row=ws_row, column=col_offset)
                     if abs(float(delta)) >= 0.1:
@@ -1232,8 +1378,152 @@ def _format_heatmap_sheet(ws, heatmap_df, col_dimensions):
                     cell.fill = make_fill(fill_hex)
                     cell.font = Font(name=Theme.FONT_NAME, size=10, color=font_hex)
                     cell.alignment = ALIGN_CENTER
+                    cell.border = border
                 col_offset += 1
             col_offset += 1  # 间隔空列
+    # 关闭最后一组 A 列合并
+    if group_start_row is not None and last_ws_row > group_start_row:
+        ws.merge_cells(start_row=group_start_row, start_column=1, end_row=last_ws_row, end_column=1)
+
+    # 列宽 + 冻结
+    ws.column_dimensions['A'].width = 34
+    ws.column_dimensions['B'].width = 26
+    ws.freeze_panes = "C3"
+
+
+def _format_significance_sheet(ws, sig_df, col_dimensions, significance_matrix):
+    """格式化「⚠️ 显著性检验」Sheet。
+
+    结构同差异热力图（维度分块 + indigo 间隔列），但单元格内容为显著性标记文本：
+      ↑+8.5pp\\np=0.003（显著 up，green 阶梯）/ ↓-6.2pp\\np=0.02（显著 down，red 阶梯）/ —（非显著，slate-50）
+    - AB 列同热力图（A 列按题目合并，B 列浅蓝底 + 深蓝字）
+    - 底部追加 3 行说明
+    - tabColor: amber FEF3C7
+    """
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = "FEF3C7"  # amber-100
+
+    border = thin_border()
+
+    # 颜色阶梯（与热力图 _heat_color 一致）
+    def _heat_color(delta_pp):
+        if delta_pp >= 20: return ("66BB6A", "FFFFFF")
+        if delta_pp >= 15: return ("A5D6A7", "1B5E20")
+        if delta_pp >= 10: return ("C8E6C9", "2E7D32")
+        if delta_pp >= 5:  return ("E8F5E9", "388E3C")
+        if delta_pp <= -20: return ("EF5350", "FFFFFF")
+        if delta_pp <= -15: return ("EF9A9A", "B71C1C")
+        if delta_pp <= -10: return ("FFCDD2", "C62828")
+        if delta_pp <= -5:  return ("FFEBEE", "D32F2F")
+        return ("F8FAFC", "94A3B8")
+
+    # 表头行 1（维度标题）+ 行 2（分组值），规格同热力图
+    ws.row_dimensions[1].height = 38
+    ws.row_dimensions[2].height = 30
+    ws.cell(row=1, column=1, value="题目")
+    ws.cell(row=1, column=2, value="选项")
+    ws.cell(row=2, column=1, value="题目")
+    ws.cell(row=2, column=2, value="选项")
+    for c in [1, 2]:
+        for r in [1, 2]:
+            cell = ws.cell(row=r, column=c)
+            cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
+            cell.fill = make_fill(TR.TITLE_BG if r == 1 else TR.SUBTITLE_BG)
+            cell.alignment = ALIGN_CENTER
+            cell.border = border
+
+    # 按维度分块写列
+    col_offset = 3
+    for dim_info in col_dimensions:
+        short_dim = _short_col_label(dim_info["question"])
+        n_values = len(dim_info["values"])
+        ws.cell(row=1, column=col_offset, value=short_dim)
+        ws.cell(row=1, column=col_offset).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
+        ws.cell(row=1, column=col_offset).fill = make_fill(TR.TITLE_BG)
+        ws.cell(row=1, column=col_offset).alignment = ALIGN_CENTER
+        ws.cell(row=1, column=col_offset).border = border
+        if n_values > 1:
+            ws.merge_cells(start_row=1, start_column=col_offset, end_row=1, end_column=col_offset + n_values - 1)
+        for i, val_label in enumerate(dim_info["values"]):
+            short_val = str(val_label).split("\n")[-1]
+            ws.cell(row=2, column=col_offset + i, value=short_val)
+            ws.cell(row=2, column=col_offset + i).font = Font(name=Theme.FONT_NAME, size=10, bold=True, color="FFFFFF")
+            ws.cell(row=2, column=col_offset + i).fill = make_fill(TR.SUBTITLE_BG)
+            ws.cell(row=2, column=col_offset + i).alignment = ALIGN_CENTER
+            ws.cell(row=2, column=col_offset + i).border = border
+        col_offset += n_values + 1
+    total_cols = col_offset - 1
+
+    # 写数据行（从第 3 行起）：A 列按题目合并，B 列浅蓝底 + 深蓝字
+    prev_q = None
+    group_start_row = None
+    last_ws_row = 2
+    for r_idx, idx in enumerate(sig_df.index):
+        ws_row = r_idx + 3
+        last_ws_row = ws_row
+        q, opt = (idx[0], idx[1]) if isinstance(idx, tuple) else (idx, "")
+        # A 列合并
+        if q != prev_q:
+            if group_start_row is not None and group_start_row < ws_row - 1:
+                ws.merge_cells(start_row=group_start_row, start_column=1, end_row=ws_row - 1, end_column=1)
+            ws.cell(row=ws_row, column=1, value=q)
+            group_start_row = ws_row
+            prev_q = q
+        acell = ws.cell(row=ws_row, column=1)
+        acell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=TR.INDIGO_DEEP)
+        acell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+        acell.alignment = ALIGN_LEFT
+        acell.border = border
+        # B 列：浅蓝底 + 深蓝字
+        bcell = ws.cell(row=ws_row, column=2, value=opt)
+        bcell.font = Font(name=Theme.FONT_NAME, size=10, color=TR.INDIGO_DEEP)
+        bcell.fill = make_fill(TR.INDIGO_ACCENT_BG)
+        bcell.alignment = ALIGN_LEFT
+        bcell.border = border
+
+        # 数据列：着色由显著性 + delta_pp 决定
+        col_offset = 3
+        for dim_info in col_dimensions:
+            dim_q = dim_info["question"]
+            for val_label in dim_info["values"]:
+                short_val = str(val_label).split("\n")[-1]  # 裸分组值，用于 significance_matrix 查找
+                cell = ws.cell(row=ws_row, column=col_offset)
+                # sig_df 列名为完整 dim\n值 标签（唯一）
+                text = sig_df.at[idx, val_label] if val_label in sig_df.columns else "—"
+                cell.value = text
+                cell.alignment = ALIGN_CENTER
+                cell.border = border
+                # 查显著性信息定色（significance_matrix 用裸分组值作 key）
+                option = str(opt)
+                info = significance_matrix.get(dim_q, {}).get(short_val, {}).get(option)
+                if info and info["significant"]:
+                    fill_hex, font_hex = _heat_color(info["delta_pp"])
+                else:
+                    fill_hex, font_hex = ("F8FAFC", "94A3B8")
+                cell.fill = make_fill(fill_hex)
+                cell.font = Font(name=Theme.FONT_NAME, size=9, color=font_hex)
+                col_offset += 1
+            col_offset += 1  # 间隔空列
+    # 关闭最后一组 A 列合并
+    if group_start_row is not None and last_ws_row > group_start_row:
+        ws.merge_cells(start_row=group_start_row, start_column=1, end_row=last_ws_row, end_column=1)
+
+    # ---- 底部说明（3 行，合并跨越所有列）----
+    notes = [
+        "检验方式：两比例 z 检验（pooled，双侧），H0: 分组占比 = 该维度总计占比",
+        "显著门槛：p<0.05 且 |Δ占比|≥5pp",
+        "↑ = 分组显著高于该维度总计，↓ = 显著低于，— = 无显著差异",
+    ]
+    note_start = last_ws_row + 2  # 空 1 行
+    for i, note in enumerate(notes):
+        r = note_start + i
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=total_cols)
+        cell = ws.cell(row=r, column=1, value=note)
+        cell.font = Font(name=Theme.FONT_NAME, size=9, color=TR.TEXT_SUB)
+        cell.fill = make_fill(TR.NOTE_BG)
+        cell.alignment = ALIGN_LEFT
+        cell.border = border
+        ws.row_dimensions[r].height = 20
 
     # 列宽 + 冻结
     ws.column_dimensions['A'].width = 34
@@ -1288,6 +1578,13 @@ def export_crosstab_excel(
                 ws4 = writer.book.create_sheet("📊 差异热力图")
                 _format_heatmap_sheet(ws4, heatmap_df, col_dimensions)
 
+        # Sheet 5: ⚠️ 显著性检验
+        if significance_matrix:
+            sig_df = calc_significance_sheet_data(ct_result, significance_matrix)
+            if sig_df is not None and not sig_df.empty:
+                ws5 = writer.book.create_sheet("⚠️ 显著性检验")
+                _format_significance_sheet(ws5, sig_df, col_dimensions, significance_matrix)
+
     return output_path
 
 
@@ -1317,16 +1614,22 @@ def _generate_output_json(
             for col in percent_df.columns
         }
 
-    # 得分摘要
+    # 得分摘要（仅数值行：均分 / NPS；跳过样本量行与显著标记行）
     score_summary = None
     if score_df is not None and not score_df.empty:
         score_summary = {}
         non_total_cols = [c for c in ct_result["col_labels"] if not c.endswith("\n总计")]
         for (q, indicator) in score_df.index:
+            ind_str = str(indicator)
+            if "样本量" in ind_str or "显著标记" in ind_str:
+                continue
             scores_by_col = {}
             for col in non_total_cols:
                 if col in score_df.columns:
-                    scores_by_col[col] = round(float(score_df.loc[(q, indicator), col]), 4)
+                    try:
+                        scores_by_col[col] = round(float(score_df.loc[(q, indicator), col]), 4)
+                    except (TypeError, ValueError):
+                        continue
             score_summary[f"{q} - {indicator}"] = scores_by_col
 
     return {
