@@ -48,7 +48,6 @@ _UP_FONT = "1E7D32"    # green-800 升 / max 高亮字色
 _DOWN_FONT = "C0392B"  # red-700 降 / min 弱化字色
 _DRIFT_BG = "FEF3C7"   # amber-100 max 单元格高亮底
 _MIN_BG = "F8FAFC"     # slate-50 min 单元格弱化底
-DIFF_THRESHOLD = 0.05  # 5pp 视为显著差异
 
 
 # ========================================================================= #

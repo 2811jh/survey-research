@@ -90,21 +90,22 @@ python {SKILL_DIR}/scripts/crosstab.py \
 
 脚本 stdout 返回 JSON，包含：
 - `percent_table`：各题各选项在不同分组的百分比
-- `diff_summary`：每题的最大差异选项和差异值
+- `diff_summary`：各分组维度下差异最大的显著选项（含 delta_pp、方向、p 值）
 - `score_summary`：满意度/NPS 得分（如有）
 - `significant_matrix`：各分组值 vs 维度总计的 z 检验显著性与 delta_pp
 - `col_dimensions`：列维度结构（各分组维度→分组值→列序映射）
 
-重点关注 `diff_summary` 中差异值 > 0.05（5pp）的题目，这些是有意义的发现。
+重点关注 `diff_summary` 中的显著项（p<0.05），delta_pp 最大的项是关键发现。
 
-### Excel 结构（4 Sheet）
+### Excel 结构（5 Sheet）
 
 | Sheet | 内容 | tabColor |
 |-------|------|----------|
 | 交叉分析 | 频数表 | slate-800 |
 | 列百分比 | 列百分比 + 显著性着色 + DataBar | indigo-600 |
-| 得分分析 | 均分+样本量行 + 趋势条 DataBar | indigo-900 |
+| 得分分析 | 均分/样本量/显著标记 三行一组 + 趋势条 DataBar（Welch t 检验） | indigo-900 |
 | 📊 差异热力图 | delta_pp 渐变热力图（vs 各维度总计） | red-700 |
+| ⚠️ 显著性检验 | 显著性标记（↑/↓ + delta_pp + p 值）+ 热力着色 + 底部检验方式说明 | amber-100 |
 
 > 📖 **参考** `references/05-survey-interpretation.md`：差异判断需结合样本量——小样本（< 100）时 5pp 差异不一定显著；NPS 分差 < 5 分通常为噪音；李克特量表不要只看均值差，需看分布变化。
 
@@ -118,7 +119,7 @@ python {SKILL_DIR}/scripts/crosstab.py \
 - 男/女对比的是「性别总计」，不是全样本总计
 - 18-24 岁对比的是「年龄总计」
 
-**双门槛判定**：p<0.05 且 |Δ占比|≥5pp 才标记显著。
+**判定门槛**：p<0.05 即标记显著。
 
 **Excel 着色**（列百分比 Sheet）：
 - 显著且分组 > 总计：amber-100 底 + green-800 字 ↑
