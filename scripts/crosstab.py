@@ -614,7 +614,7 @@ def calc_scores(df: pd.DataFrame, ct_result: dict, score_questions: list) -> Opt
         score_results.append(pd.Series(sample_data, index=freq_df.columns))
         score_index.append((q, "样本量"))
 
-        # 显著标记行：各分组均分 vs 该维度总计均分（Welch t 检验，p<0.05 且 |Δ|≥0.1 才标显著）
+        # 显著标记行：各分组均分 vs 该维度总计均分（Welch t 检验，p<0.05 才标显著）
         # 该题的数值化得分序列（与得分行计算一致的 option→score 映射；
         # freq_df 索引存的是 str(value)，故对 df[q] 逐值 str 化后提取分数，避免 dtype 不匹配）
         numeric_series = df[q].apply(
@@ -653,7 +653,7 @@ def calc_scores(df: pd.DataFrame, ct_result: dict, score_questions: list) -> Opt
                           if total_mask is not None else numeric_series.dropna())
             group_vals = numeric_series[mask]
             p_val, delta = _mean_t_test(group_vals, total_vals)
-            if p_val < 0.05 and abs(delta) >= 0.1:
+            if p_val < 0.05:
                 if delta > 0:
                     marker_data[col_label] = f"↑+{delta:.2f}"
                 else:
@@ -799,7 +799,7 @@ def calc_significance(ct_result: dict) -> dict:
                 p_group = c_group / group_n if group_n else 0
                 p_total = c_total / total_n if total_n else 0
                 delta_pp = round(float(p_group - p_total) * 100, 1)
-                significant = bool((p < 0.05) and (abs(delta_pp) >= 5))
+                significant = bool(p < 0.05)
                 direction = "up" if delta_pp > 0 else "down"
 
                 result[dim][group_value][str(option)] = {
@@ -1278,7 +1278,7 @@ def _format_score_sheet_v2(ws, col_labels, n_index_cols=2):
     # ---- 底部口径说明（3 行，合并跨越所有列，参考显著性检验 Sheet）----
     notes = [
         "检验方式：Welch t 检验（两组独立样本，方差不齐），H0: 分组均分 = 该维度总计均分",
-        "显著门槛：p<0.05 且 |Δ均分|≥0.1",
+        "显著门槛：p<0.05",
         "↑ = 分组均分显著高于该维度总计，↓ = 显著低于，— = 无显著差异",
     ]
     note_start = max_row + 2  # 空 1 行
@@ -1528,7 +1528,7 @@ def _format_significance_sheet(ws, sig_df, col_dimensions, significance_matrix):
     # ---- 底部说明（3 行，合并跨越所有列）----
     notes = [
         "检验方式：两比例 z 检验（pooled，双侧），H0: 分组占比 = 该维度总计占比",
-        "显著门槛：p<0.05 且 |Δ占比|≥5pp",
+        "显著门槛：p<0.05",
         "↑ = 分组显著高于该维度总计，↓ = 显著低于，— = 无显著差异",
     ]
     note_start = last_ws_row + 2  # 空 1 行
