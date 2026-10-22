@@ -177,8 +177,8 @@ def test_calc_significance_vs_分组维度总计():
     # 男 vs 总计：选项A 60% vs 50%，差 10pp，应显著
     assert "Q33.性别" in sig
     assert "男" in sig["Q33.性别"]
-    assert "选项A" in sig["Q33.性别"]["男"]
-    info = sig["Q33.性别"]["男"]["选项A"]
+    assert "选项A" in sig["Q33.性别"]["男"]["Q1"]
+    info = sig["Q33.性别"]["男"]["Q1"]["选项A"]
     assert info["significant"] is True
     assert info["direction"] == "up"
     assert abs(info["delta_pp"] - 10.0) < 0.1

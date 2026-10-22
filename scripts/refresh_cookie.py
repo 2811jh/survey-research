@@ -40,7 +40,7 @@ PLATFORMS = {
 
 
 def _log(msg):
-    print(f"[refresh_cookie] {msg}", flush=True)
+    print(f"[refresh_cookie] {msg}", file=sys.stderr, flush=True)
 
 
 def _config_file(platform="cn"):

@@ -16,7 +16,7 @@
 - 数据来源三选一：
   - **本地文件**：用户直接给路径（路径 A）
   - **下载产物**：`survey_download.py download` 下载的 `files.quantified_data` 文件路径（路径 B）
-  - **清洗后产物**：`survey_download.py clean` 清洗后下载的 `files.quantified_data` 文件路径（路径 B+清洗）
+  - **清洗后产物**：`survey_download.py download --clean` 清洗后下载的 `files.quantified_data` 文件路径（路径 B+清洗）
 - 分桶模式二选一：
   - **时间分桶**（默认）：`--granularity week|month|day|quarter|custom_ranges`，时间列自动检测（默认列 → 关键词扫描 → ask 兜底）
   - **列分桶**：`--bucket_col` 指定任意离散列（版本号/活动批次/渠道等），跳过时间列识别
@@ -71,7 +71,7 @@ python {SKILL_DIR}/scripts/survey_drift.py analyze \
 读 `drift_findings.json`，为 `metrics` 和 `questions` 里**每一项**写一句话结论，输出到 `conclusions.json`（`{题目或指标名: 结论文本}` 映射；键用 question 的 `question` 字段、metric 的 `source_col` 字段）。
 
 结论规范：
-- **只写定性判断**，数字（占比/均分/p）脚本已算好，不要手写数字避免矛盾；可引用方向和量级。
+- **数字仅可引用 findings 原值**，不得手算或推测；只需定性时可不重复数字。
 - **异动题**（`drift=true`）：写"哪个选项/指标 + 方向（升/降）+ 幅度（pp 或分）+ 是否显著"，如"『非常满意』占比环比下降约 6pp（显著），需排查最新版本体验"。
 - **无异动题**：写"本期无显著变化"。
 - **样本不足**（`low_n=true`）：结论末尾加"（样本不足，仅供参考）"。
@@ -103,7 +103,7 @@ python {SKILL_DIR}/scripts/survey_drift.py export \
 ## drift_findings.json 结构
 
 - 顶层：`granularity`（列分桶模式为 null）、`bucket_mode`（"time" / "column"）、`bucket_col`（列分桶模式才有）、`time_col`（时间分桶模式才有）、`time_col_source`（`explicit` 用户显式指定 / `default` 命中默认列 `结束答题时间` / `auto_detect` 关键词扫描命中 / `not_found` 未找到时间列 / `not_applicable` 列分桶模式不适用）、`custom_ranges`（custom_ranges 粒度才有）、`buckets`（旧→新有序）、`bucket_sizes`、`low_n_buckets`、`metrics`、`questions`、`nps_col`、`satisfaction_cols`（实际为合并集：关键词识别 + 五点量表自动检测的全部均分题）。
-- `metrics[]`：满意度均分（`type=satisfaction_mean`）、NPS（`type=nps`）。含 `by_bucket` 各期值、`adjacent` 相邻期检验（`delta`/`delta_pp`、`test`、`p`、`significant`、`drift`、`low_n`、`direction`）。**凡取值为 1~5 的五点量表单选题都会自动纳入 `metrics` 做均分显著性检验**（与 `satisfaction_cols` 关键词识别结果合并去重；`findings.satisfaction_cols` 记录最终纳入的全部均分题）。
+- `metrics[]`：满意度均分（`type=satisfaction_mean`）、NPS（`type=nps`）。含 `by_bucket` 各期值、`adjacent` 相邻期检验（`delta`/`delta_pp`、`test`、`p`、`significant`、`drift`、`low_n`、`direction`）。**符合五点数值条件且有量表语义的题目都会自动纳入 `metrics` 做均分显著性检验**（与 `satisfaction_cols` 关键词识别结果合并去重；`findings.satisfaction_cols` 记录最终纳入的全部均分题）。
 - `questions[]`：单选（含 `overall_test` 卡方）、多选（`overall_test=null`）。含 `by_bucket` 各期各选项占比、`adjacent_option_tests`（逐选项相邻期两比例 z）、题级 `drift`、`low_n`。**多选题占比/样本量以"答过此题(至少勾选一项)的人数"为基数**（与交叉分析一致，逻辑门控题不计未触达者；如 Q25 基数≈5.6万而非全样本 29万）。
   - `question`：主键（单选=完整列名；多选=`Q\d+.` 根前缀）。**结论 conclusions.json 的键用 `question`**。
   - `question_label`：Excel 展示用完整题干（多选从子列还原冒号前部分，单选同 `question`）。写结论时可参考它理解题意，但键仍用 `question`。
@@ -120,14 +120,16 @@ conclusions.json 示例：
 
 | Sheet | 内容 |
 |-------|------|
-| 📊 指标总览 | 满意度均分、NPS 全时间线各期一列 + 最新期 vs 上期趋势标 ▲▼ + 是否显著。**所有五点量表题（选项1~5）自动纳入并做相邻期均分显著性检验**（t 检验/Mann-Whitney），无需手动指定 `--satisfaction_cols`。**每个指标下方紧跟一行「样本量」**（该指标各期有效作答人数，整数格式，与逐题异动明细的样本量一致） |
+| 📊 指标总览 | 满意度均分、NPS 全时间线各期一列 + 最新期 vs 上期趋势标 ▲▼ + 是否显著。**有明确量表语义的五点量表题自动纳入并做相邻期均分显著性检验**（t 检验/Mann-Whitney），无需手动指定 `--satisfaction_cols`。**每个指标下方紧跟一行「样本量」**（该指标各期有效作答人数，整数格式，与逐题异动明细的样本量一致） |
 | 📈 逐题异动明细 | **题目按题号 Q1→Q35 升序排列**；A 列题目**垂直居中**跨整块显示。每题×各期占比（DataBar）+ **C 列「整体」基线**（全样本各期按样本量加权的整体占比，供各期对照）+ **单选/多选选项按整体占比降序排**（五点量表题、人口题「性别/年龄/职业」保持原顺序；有编码→标签映射的题按编码升序）+ **逐周环比热力标注**（某周相对前一周显著变化则着色：琥珀底加粗=大幅异动、红/绿字=一般显著升降、灰字=无变化）+ 异动周列 + **每题末行「样本量」**（整体 N + 各期有效 n）+ **五点量表题再加「加权满意度」行**（Σ分值×人数/总样本量 = 1~5 均分，整体 + 各期）+ **人口题（性别/年龄/职业）再加「剔除「不愿意透露」后归一化」子区块**（剩余选项占比重新归一 + 剔除后样本量，并同样做相邻期两比例 z 检验 → 热力标注 + 异动周）+ **AI 结论列** |
 | ⚠️ 异动汇总 | 被判异动的题目/指标：时段/变化项/方向/幅度/显著性/AI 结论。默认只列最新相邻期；`--summary-scope all` 列全时间线历史异动并含「时段」列 |
 | ℹ️ 方法与样本 | 分桶方式、各桶样本量、双门槛阈值、样本不足清单，以及**逐条详列的检验方法**（两比例 z / 卡方 / Welch t / Mann-Whitney U / NPS 各自的公式、理论前提、适用哪类题目）、加权满意度公式、人口题归一化说明、明细表配色图例、免责 |
 
 ## 统计方法与判定
 
-- 满意度均分 → t 检验（小样本/偏态转 Mann-Whitney U）；NPS/占比 → 两比例 z 检验；单选整体 → 卡方。
+- 满意度均分 → Welch t 检验（某期 n<30 时转 Mann-Whitney U，检验分布差异而非专门检验均值）；NPS → 将推荐/中立/贬损编码为 +1/0/−1 后比较两期均值，n≥30 用 Welch t，小样本用 Mann-Whitney U；选项占比 → 两比例 z 检验；单选整体 → 卡方。
+- 自动均分识别须同时满足五点数值条件与量表语义（满意、评分、评价、印象、意愿等）；年龄、职业等分类编码不因取值 1–5 而自动算均分。未识别的真实量表用 `--satisfaction_cols` 显式确认。
+- 周标签含 ISO 年，避免跨年合桶；日期形式的自定义结束日覆盖完整当天，带具体时刻则按该时刻截止；列分桶剔除空值与空白字符串。
 - **判异动双门槛**：`p<0.05` 且（占比 Δ≥±5pp 或 均分 Δ≥±0.1）。
 - **样本守卫**：桶内有效样本 `n<30` 不判异动，标"样本不足，仅供参考"。
 

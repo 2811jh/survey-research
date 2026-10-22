@@ -117,10 +117,6 @@ def _is_meta_column(col_name: str) -> bool:
     if "输入文本" in col_clean:
         return True
 
-    # 非 Q 开头的其余未知列 → 按元数据处理
-    if not re.match(r'^Q\d+', col_clean):
-        return True
-
     return False
 
 

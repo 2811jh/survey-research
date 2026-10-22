@@ -1,11 +1,7 @@
-scripts/__pycache__/  
-__pycache__/  
-*.pyc  
-
-# 敏感配置（含 cookie / token）
+__pycache__/
+*.pyc
+.pytest_cache/
 scripts/config.json
 scripts/config_global.json
-
-# 浏览器自动登录产生的缓存目录
 scripts/.browser_profile/
 scripts/.browser_profile_global/

@@ -38,7 +38,7 @@ def test_two_prop_z_big_diff_is_significant():
 
 def test_labels():
     dt = pd.Timestamp("2026-04-06")  # 周一, ISO 第15周
-    assert survey_drift.week_label(dt) == "第15周（4.6-4.12）"
+    assert survey_drift.week_label(dt) == "2026年第15周（4.6-4.12）"
     assert survey_drift.month_label(dt) == "26年4月"
     assert survey_drift.day_label(dt) == "2026-04-06"
 
@@ -48,10 +48,10 @@ def test_bucketize_orders_chronologically():
         "2026-04-06", "2026-04-13", "2026-04-06", "2026-04-20"
     ]))
     labels, ordered = survey_drift.bucketize(s, "week")
-    assert ordered == ["第15周（4.6-4.12）", "第16周（4.13-4.19）", "第17周（4.20-4.26）"]
+    assert ordered == ["2026年第15周（4.6-4.12）", "2026年第16周（4.13-4.19）", "2026年第17周（4.20-4.26）"]
     assert list(labels) == [
-        "第15周（4.6-4.12）", "第16周（4.13-4.19）",
-        "第15周（4.6-4.12）", "第17周（4.20-4.26）",
+        "2026年第15周（4.6-4.12）", "2026年第16周（4.13-4.19）",
+        "2026年第15周（4.6-4.12）", "2026年第17周（4.20-4.26）",
     ]
 
 
@@ -208,7 +208,7 @@ def test_analyze_cli_end_to_end(tmp_path):
         [sys.executable, str(MODULE_PATH), "analyze",
          "--file_path", str(csv), "--granularity", "week",
          "--findings_out", str(out)],
-        capture_output=True, text=True, encoding="utf-8")
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     payload = json.loads(r.stdout)
     assert payload["status"] == "success"
@@ -231,7 +231,7 @@ def test_analyze_cli_multi_choice_json_safe(tmp_path):
          "--file_path", str(csv), "--granularity", "week",
          "--satisfaction_cols", "Q1.整体满意度",
          "--findings_out", str(out)],
-        capture_output=True, text=True, encoding="utf-8")
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     payload = json.loads(r.stdout)
     assert payload["status"] == "success"
@@ -251,26 +251,26 @@ from openpyxl import load_workbook
 def test_export_creates_four_sheets(tmp_path):
     findings = {
         "granularity": "week", "time_col": "结束答题时间",
-        "buckets": ["第15周（4.6-4.12）", "第16周（4.13-4.19）"],
-        "bucket_sizes": {"第15周（4.6-4.12）": 40, "第16周（4.13-4.19）": 40},
+        "buckets": ["2026年第15周（4.6-4.12）", "2026年第16周（4.13-4.19）"],
+        "bucket_sizes": {"2026年第15周（4.6-4.12）": 40, "2026年第16周（4.13-4.19）": 40},
         "low_n_buckets": [],
         "metrics": [{
             "name": "Q1.整体满意度 均分", "type": "satisfaction_mean", "source_col": "Q1.整体满意度",
-            "by_bucket": {"第15周（4.6-4.12）": 4.5, "第16周（4.13-4.19）": 3.0},
-            "sizes": {"第15周（4.6-4.12）": 38, "第16周（4.13-4.19）": 40},
-            "adjacent": [{"from": "第15周（4.6-4.12）", "to": "第16周（4.13-4.19）",
+            "by_bucket": {"2026年第15周（4.6-4.12）": 4.5, "2026年第16周（4.13-4.19）": 3.0},
+            "sizes": {"2026年第15周（4.6-4.12）": 38, "2026年第16周（4.13-4.19）": 40},
+            "adjacent": [{"from": "2026年第15周（4.6-4.12）", "to": "2026年第16周（4.13-4.19）",
                           "delta": -1.5, "test": "t_test", "p": 0.001,
                           "significant": True, "drift": True, "low_n": False, "direction": "down"}],
         }],
         "questions": [{
             "question": "Q7.活动评价（单选）", "type": "single_choice",
             "options": ["满意", "一般"],
-            "by_bucket": {"第15周（4.6-4.12）": {"满意": 1.0, "一般": 0.0},
-                          "第16周（4.13-4.19）": {"满意": 0.5, "一般": 0.5}},
-            "sizes": {"第15周（4.6-4.12）": 40, "第16周（4.13-4.19）": 40},
+            "by_bucket": {"2026年第15周（4.6-4.12）": {"满意": 1.0, "一般": 0.0},
+                          "2026年第16周（4.13-4.19）": {"满意": 0.5, "一般": 0.5}},
+            "sizes": {"2026年第15周（4.6-4.12）": 40, "2026年第16周（4.13-4.19）": 40},
             "overall_test": {"test": "chi_square", "p": 0.001, "significant": True},
-            "adjacent_option_tests": [{"option": "满意", "from": "第15周（4.6-4.12）",
-                "to": "第16周（4.13-4.19）", "delta_pp": -50.0, "test": "two_prop_z",
+            "adjacent_option_tests": [{"option": "满意", "from": "2026年第15周（4.6-4.12）",
+                "to": "2026年第16周（4.13-4.19）", "delta_pp": -50.0, "test": "two_prop_z",
                 "p": 0.001, "significant": True, "drift": True, "low_n": False, "direction": "down"}],
             "drift": True, "low_n": False,
         }],
@@ -571,7 +571,7 @@ def test_full_pipeline_smoke(tmp_path):
         [sys.executable, str(MODULE_PATH), "analyze",
          "--file_path", str(csv), "--granularity", "week",
          "--findings_out", str(findings_out)],
-        capture_output=True, text=True, encoding="utf-8")
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8")
     assert r1.returncode == 0, r1.stderr
     p1 = json.loads(r1.stdout)
     assert p1["status"] == "success"
@@ -587,7 +587,7 @@ def test_full_pipeline_smoke(tmp_path):
         [sys.executable, str(MODULE_PATH), "export",
          "--findings", str(findings_out), "--conclusions", str(conclusions_out),
          "--output_path", str(out_xlsx)],
-        capture_output=True, text=True, encoding="utf-8")
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8")
     assert r2.returncode == 0, r2.stderr
     assert json.loads(r2.stdout)["status"] == "success"
     assert out_xlsx.exists()

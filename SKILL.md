@@ -44,9 +44,14 @@ description: |
 
 ## 依赖要求
 
-脚本依赖 `pandas`、`numpy`、`scipy`、`openpyxl`、`requests`。如果用户环境缺失，先执行：
+脚本依赖 `pandas`、`numpy`、`scipy`、`openpyxl`、`requests`；Word 导出还需 `python-docx`。优先安装完整依赖：
 ```bash
-pip install pandas numpy scipy openpyxl requests
+python -m pip install -r "{SKILL_DIR}/scripts/requirements.txt"
+```
+
+示例中的反斜杠续行与单引号 JSON 适用于 Bash。Windows cmd.exe 使用单行命令，路径用双引号，JSON 内双引号转义，例如：
+```cmd
+python -X utf8 "{SKILL_DIR}/scripts/crosstab.py" --file_path "数据.csv" --row_questions "[\"all\"]" --col_questions "[\"Q17.性别\"]" --calc_scores auto
 ```
 
 ---
@@ -246,7 +251,7 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 **数据来源三选一**：
 - 本地 CSV/Excel（路径 A）
 - `survey_download.py download` 下载的 `files.quantified_data` 文件路径（路径 B）
-- `survey_download.py clean` 清洗后下载的 `files.quantified_data` 文件路径（路径 B+清洗）
+- `survey_download.py download --clean` 清洗后下载的 `files.quantified_data` 文件路径（路径 B+清洗）
 
 下载/清洗产物的 `quantified_data` 路径可直接传给 `survey_drift.py analyze --file_path`。
 
@@ -309,8 +314,9 @@ python {SKILL_DIR}/scripts/basic_stats.py --file_path "用户文件路径"
 
 ## 重要注意事项
 
-1. **脚本输出解析**：所有脚本通过 stdout 输出 JSON，错误信息输出到 stderr。
-   执行后读取 stdout 的 JSON 来获取结果数据。
+1. **脚本输出解析**：分析和下载脚本通过 stdout 输出 JSON，错误和日志输出到 stderr。
+   `refresh_cookie.py` 是交互式认证工具，仅通过退出码表示成功或失败，日志写 stderr，不输出 JSON。
+   执行分析脚本后读取 stdout 的 JSON 来获取结果数据。
 
 2. **大数据量处理**：
    - 如果文本题回答超过 500 条，先抽样分析：

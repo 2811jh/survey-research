@@ -115,9 +115,13 @@ def _build_question_structure(df: pd.DataFrame) -> list:
                 })
             continue
 
-        # 非 Q 开头 → 跳过
         qm = RE_Q.match(cn)
         if not qm:
+            from load_and_classify import _is_meta_column
+            if not _is_meta_column(cn):
+                questions[cn] = {"qid": cn, "label": cn,
+                                 "type": _detect_question_type(cn),
+                                 "columns": [col], "sub_questions": []}
             continue
 
         # 输入文本附属列 → 跳过
@@ -278,6 +282,7 @@ def _stat_nps(df, col):
         series = pd.to_numeric(series)
     except:
         return None
+    series = series[series.between(0, 10) & (series % 1 == 0)]
     total = len(series)
     if total == 0:
         return None
@@ -429,13 +434,7 @@ def _write_stat_report(df, questions, output_path,
         # ============ 量表题（1-5星 或 0-10分）============
         if qtype == "量表题" and len(cols) == 1:
             col = cols[0]
-            series = df[col].dropna()
-            try:
-                vals = pd.to_numeric(series).unique()
-                max_val = max(vals) if len(vals) > 0 else 5
-            except:
-                max_val = 5
-            is_nps = (max_val >= 10)
+            is_nps = bool(re.search(r"nps|推荐", str(col), re.IGNORECASE))
 
             ws.cell(row=row, column=1, value=label)
             ws.cell(row=row, column=1).font = Font(name=Theme.FONT_NAME, size=10, bold=True)

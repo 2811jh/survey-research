@@ -34,7 +34,7 @@ def week_label(dt):
     iso = dt.isocalendar()
     monday = dt - timedelta(days=iso[2] - 1)
     sunday = monday + timedelta(days=6)
-    return f"第{iso[1]}周（{_fmt_md(monday)}-{_fmt_md(sunday)}）"
+    return f"{iso[0]}年第{iso[1]}周（{_fmt_md(monday)}-{_fmt_md(sunday)}）"
 
 
 def month_label(dt):
@@ -80,7 +80,10 @@ def _bucketize_custom(dt_series, custom_ranges):
         if len(item) != 3:
             raise ValueError(f"custom_ranges 每项需为 [label, start, end]，实际：{item}")
         label, start, end = item
-        parsed.append((label, pd.to_datetime(start), pd.to_datetime(end)))
+        end_dt = pd.to_datetime(end)
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(end)):
+            end_dt += pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        parsed.append((label, pd.to_datetime(start), end_dt))
 
     def _label_for(d):
         if pd.isna(d):
@@ -117,6 +120,7 @@ def two_prop_z(c1, n1, c2, n2):
 def compute_nps(series):
     """0~10 推荐题 → NPS。9-10 推荐者, 0-6 贬损者, 7-8 中立。"""
     vals = pd.to_numeric(series, errors="coerce").dropna()
+    vals = vals[vals.between(0, 10) & (vals % 1 == 0)]
     n = len(vals)
     if n == 0:
         return {"nps": 0.0, "promoter": 0, "detractor": 0, "n": 0}
@@ -405,15 +409,14 @@ def build_findings(df, classification, granularity, time_col,
     if bucket_col:
         if bucket_col not in df.columns:
             raise KeyError(f"分桶列不存在：{bucket_col}")
-        labels = df[bucket_col].astype(str)
+        labels = df[bucket_col].astype("string").str.strip().replace("", pd.NA)
+        present = labels.dropna().unique().tolist()
         if bucket_order:
-            ordered = [b for b in bucket_order if b in labels.unique()]
-            # 补上 order 里没有的桶（避免丢数据）
-            extras = [b for b in labels.unique() if b not in ordered]
+            ordered = [str(b) for b in bucket_order if str(b) in present]
+            extras = [b for b in present if b not in ordered]
             ordered = ordered + extras
         else:
-            # 按出现顺序去重
-            ordered = list(dict.fromkeys(labels.tolist()))
+            ordered = present
         bucket_mode = "column"
         granularity_out = None
         time_col_out = None
@@ -436,9 +439,11 @@ def build_findings(df, classification, granularity, time_col,
     low_n_buckets = [b for b, n in sizes_all.items() if n < min_n]
 
     metrics = []
-    # 指标集合 = 关键词识别的满意度题 ∪ 全部五点量表单选题（都要做均分显著性检验）
+    # 自动均分仅纳入有明确量表语义的题；显式指定的列由调用方确认。
     scale_cols = [c for c in classification.get("single_choice", [])
-                  if c in df.columns and _five_point_scale_series(df[c])]
+                  if c in df.columns and _five_point_scale_series(df[c])
+                  and any(k in str(c) for k in ("满意", "量表", "评分", "评价", "印象", "体验感受", "意愿"))
+                  and not any(k in str(c) for k in ("年龄", "职业", "性别", "渠道", "地区"))]
     metric_cols = list(dict.fromkeys((satisfaction_cols or []) + scale_cols))
     for col in metric_cols:
         if col not in df.columns:
@@ -460,12 +465,18 @@ def build_findings(df, classification, granularity, time_col,
         for older, newer in _adjacent_pairs(ordered):
             r_o = compute_nps(df.loc[labels == older, nps_col])
             r_n = compute_nps(df.loc[labels == newer, nps_col])
-            z, pval = two_prop_z(r_n["promoter"], r_n["n"], r_o["promoter"], r_o["n"])
+            def nps_values(bucket):
+                vals = pd.to_numeric(df.loc[labels == bucket, nps_col], errors="coerce").dropna()
+                vals = vals[vals.between(0, 10) & (vals % 1 == 0)]
+                return np.where(vals >= 9, 1, np.where(vals <= 6, -1, 0))
+
+            comparison = compare_means(nps_values(newer), nps_values(older))
+            pval = comparison["p"]
             delta_pp = by_bucket[newer] - by_bucket[older]
             low_n = r_o["n"] < min_n or r_n["n"] < min_n
             adj.append({
                 "from": older, "to": newer, "delta_pp": round(delta_pp, 1),
-                "test": "two_prop_z", "p": round(pval, 4), "significant": pval < 0.05,
+                "test": comparison["test"], "p": round(pval, 4), "significant": pval < 0.05,
                 "drift": (not low_n) and evaluate_drift(delta_pp, pval, "pp"),
                 "low_n": low_n,
                 "direction": "up" if delta_pp > 0 else ("down" if delta_pp < 0 else "flat"),
@@ -652,7 +663,11 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
 
         opts = q["options"]
         overall, overall_n = _overall_props(q, buckets)
-        scale_pairs = _five_point_scale_opts(opts)
+        scale_pairs = (_five_point_scale_opts(opts)
+                       if qkey in findings.get("satisfaction_cols", [])
+                       or (any(k in qkey for k in ("满意", "量表", "评分", "评价", "印象", "意愿"))
+                           and not any(k in qkey for k in ("年龄", "职业", "性别", "渠道", "地区")))
+                       else None)
         is_demo = _is_demographic(q.get("question_label", qkey))
         if lmap and not scale_pairs:
             # 有编码→标签映射（人口题）：按编码数字升序，保持问卷逻辑顺序
@@ -809,12 +824,12 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
     ws4.append(["检验方法总览",
                 "占比类(单选各选项占比、多选各选项勾选率、人口题及其归一化占比)：两比例 z 检验；"
                 "单选题整体分布：卡方检验；均分类(五点量表加权满意度)：Welch t 检验(n≥30)/Mann-Whitney U(n<30)；"
-                "NPS：净推荐值差 + 推荐者比例两比例 z 检验。"])
+                "NPS：推荐/中立/贬损编码为 +1/0/-1 后，比较相邻期均值（Welch t；小样本 Mann-Whitney U）。"])
     ws4.append(["① 两比例 z 检验",
                 "适用：相邻两期某选项占比是否显著变化。理论：大样本下比例近似正态，"
                 "H0 两期总体比例相等。合并比例 p̂=(x1+x2)/(n1+n2)，"
                 "z=(p̂1−p̂2)/√(p̂(1−p̂)(1/n1+1/n2))，双尾取 p 值。"
-                "用于：所有单选/多选选项、人口题(Q33/34/35)及其剔除「不愿意透露」归一化后占比、NPS 推荐者比例。"])
+                "用于：所有单选/多选选项、人口题及其剔除「不愿意透露」归一化后占比。"])
     ws4.append(["② 卡方检验(独立性)",
                 "适用：相邻两期「选项×期」列联表整体分布是否改变。理论：χ²=Σ(O−E)²/E，"
                 "E 为独立假设下期望频数，自由度=(选项数−1)。用于：每道单选题的整体分布是否异动"
@@ -828,7 +843,7 @@ def export_excel(findings, conclusions, output_path, summary_scope="latest",
                 "非参数检验，比较两组分布位置。用于：五点量表题均分且某期 n<30 时自动改用。"])
     ws4.append(["⑤ NPS(净推荐值)",
                 "定义：NPS=推荐者%(打 9~10 分)−贬损者%(打 0~6 分)，7~8 分为中立者。"
-                "异动检验：对相邻期推荐者比例做两比例 z 检验，幅度以 NPS 差(pp)判双门槛。"
+                "异动检验：三值编码 +1/0/-1 后比较相邻期均值，n≥30 用 Welch t，否则 Mann-Whitney U；幅度以 NPS 差(pp)判双门槛。"
                 "用于：指定了 --nps_col 的推荐意愿题。"])
     ws4.append(["加权满意度(均分)公式",
                 "国际通用均分口径：加权满意度=Σ(分值×该分值人数)/总样本量=(1×n1+2×n2+3×n3+4×n4+5×n5)/N，"

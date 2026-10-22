@@ -38,6 +38,7 @@ from _styles import (
     ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT, ALIGN_TOP_LEFT,
 )
 from openpyxl.styles import Font, PatternFill
+from openpyxl.comments import Comment
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import DataBarRule
 from openpyxl.formatting.formatting import ConditionalFormattingList
@@ -490,7 +491,7 @@ def _is_scoreable_question(question_name: str, df: pd.DataFrame) -> Optional[str
     min_val, max_val = min(numeric_vals), max(numeric_vals)
 
     if has_nps:
-        if min_val >= 0 and max_val >= 9 and max_val <= 10:
+        if min_val >= 0 and max_val <= 10:
             return "nps"
         if has_satisfaction and min_val >= 1 and max_val <= 7:
             return "satisfaction"
@@ -516,7 +517,9 @@ def auto_detect_score_questions(df: pd.DataFrame, ct_result: dict) -> list:
             scoreable.append(q_name)
             continue
         # 五点量表自动检测
-        if q_name in df.columns and _five_point_scale_series(df[q_name]):
+        if (q_name in df.columns and _five_point_scale_series(df[q_name])
+                and any(k in str(q_name) for k in ("量表", "评分", "评价", "印象", "体验感受"))
+                and not any(k in str(q_name) for k in ("年龄", "职业", "性别", "渠道", "地区"))):
             scoreable.append(q_name)
     return scoreable
 
@@ -604,12 +607,7 @@ def calc_scores(df: pd.DataFrame, ct_result: dict, score_questions: list) -> Opt
         sample_data = {}
         for col_label in freq_df.columns:
             col_str = str(col_label)
-            if col_str.endswith("\n总计") or col_str == "总计":
-                # 总计列样本量 = 该题全局有效作答数
-                sample_data[col_label] = int(df[q].notna().sum())
-            else:
-                # 分组列样本量 = 该分组下该题有效作答数（排除总计行）
-                sample_data[col_label] = int(non_total_slice[col_label].sum())
+            sample_data[col_label] = int(non_total_slice[col_label].sum())
         score_results.append(pd.Series(sample_data, index=freq_df.columns))
         score_index.append((q, "样本量"))
 
@@ -648,10 +646,19 @@ def calc_scores(df: pd.DataFrame, ct_result: dict, score_questions: list) -> Opt
             # 该维度总计均分（无维度总计 mask 时回退到全样本）
             dim = _extract_dim_from_label(col_str)
             total_mask = dim_to_total_mask.get(dim)
-            total_vals = (numeric_series[total_mask].dropna()
-                          if total_mask is not None else numeric_series.dropna())
-            group_vals = numeric_series[mask]
-            p_val, delta = _mean_t_test(group_vals, total_vals)
+            total_mask = (total_mask if total_mask is not None
+                          else pd.Series(True, index=df.index))
+            score_series = numeric_series
+            if score_type == "nps":
+                score_series = numeric_series.where(numeric_series.between(0, 10) & (numeric_series % 1 == 0))
+                score_series = score_series.map(
+                    lambda v: (1 if v >= 9 else (-1 if v <= 6 else 0)) if pd.notna(v) else np.nan
+                )
+            total_vals = score_series[total_mask].dropna()
+            group_vals = score_series[mask & total_mask]
+            rest_vals = score_series[total_mask & ~mask]
+            p_val, _ = _mean_t_test(group_vals, rest_vals)
+            delta = round(float(group_vals.mean() - total_vals.mean()), 2)
             if p_val < 0.05:
                 if delta > 0:
                     marker_data[col_label] = f"↑+{delta:.2f}"
@@ -724,7 +731,7 @@ def _mean_t_test(group_vals, total_vals):
         return 1.0, 0.0
     delta = float(g.mean() - t.mean())
     if g.std() == 0 and t.std() == 0:
-        return 1.0, round(delta, 2)
+        return (1.0 if delta == 0 else 0.0), round(delta, 2)
     try:
         _, p = stats.ttest_ind(g, t, equal_var=False)
         p = float(p)
@@ -753,10 +760,10 @@ def _extract_col_dimensions(ct_result: dict) -> list:
 
 
 def calc_significance(ct_result: dict) -> dict:
-    """对每个分组维度的各分组值 vs 该维度总计列，逐选项做两比例 z 检验。
+    """分组 vs 该维度其余有效样本做两比例 z 检验；delta_pp 为分组减总计。
 
     Returns:
-        {分组维度列名: {分组值: {选项: {p, delta_pp, significant, direction}}}}
+        {分组维度列名: {分组值: {题目: {选项: {p, delta_pp, significant, direction}}}}}
         direction: "up" (分组 > 总计) / "down" (分组 < 总计)
     """
     freq_df = ct_result["freq_df"]
@@ -788,20 +795,22 @@ def calc_significance(ct_result: dict) -> dict:
             result[dim][group_value] = {}
 
             for idx in freq_df.index:
-                option = idx[1] if isinstance(idx, tuple) else idx
+                question, option = idx
                 if str(option) in ("总计", "合计", "Total"):
                     continue
+                group_n = int(freq_df.loc[(question, "总计"), group_col])
+                total_n = int(freq_df.loc[(question, "总计"), total_col])
                 c_group = int(freq_df.loc[idx, group_col])
                 c_total = int(freq_df.loc[idx, total_col])
 
-                z, p = two_prop_z(c_group, group_n, c_total, total_n)
+                z, p = two_prop_z(c_group, group_n, c_total - c_group, total_n - group_n)
                 p_group = c_group / group_n if group_n else 0
                 p_total = c_total / total_n if total_n else 0
                 delta_pp = round(float(p_group - p_total) * 100, 1)
                 significant = bool(p < 0.05)
                 direction = "up" if delta_pp > 0 else "down"
 
-                result[dim][group_value][str(option)] = {
+                result[dim][group_value].setdefault(str(question), {})[str(option)] = {
                     "p": p, "delta_pp": delta_pp,
                     "significant": significant, "direction": direction,
                 }
@@ -837,10 +846,8 @@ def calc_heatmap_data(ct_result, significance_matrix):
         col_data = {}
         for idx in row_indices:
             option = str(idx[1] if isinstance(idx, tuple) else idx)
-            if option in significance_matrix[dim][group_col_value]:
-                col_data[idx] = significance_matrix[dim][group_col_value][option]["delta_pp"]
-            else:
-                col_data[idx] = 0.0
+            info = significance_matrix[dim][group_col_value].get(str(idx[0]), {}).get(option)
+            col_data[idx] = info["delta_pp"] if info else 0.0
         data[full_label] = col_data
 
     heatmap_df = pd.DataFrame(data, index=row_indices)
@@ -881,7 +888,7 @@ def calc_significance_sheet_data(ct_result, significance_matrix):
         col_data = {}
         for idx in row_indices:
             option = str(idx[1] if isinstance(idx, tuple) else idx)
-            info = significance_matrix[dim][group_col_value].get(option)
+            info = significance_matrix[dim][group_col_value].get(str(idx[0]), {}).get(option)
             if info is None or not info["significant"]:
                 col_data[idx] = "—"
             else:
@@ -914,19 +921,20 @@ def get_crosstab_summary(ct_result: dict, significance_matrix: dict = None) -> d
 
     diff_summary = {}
     for dim, groups in significance_matrix.items():
-        for group_col, options in groups.items():
-            for option, info in options.items():
-                if not info["significant"]:
-                    continue
-                # 以维度为 key，找该维度下差异最大的显著项
-                if dim not in diff_summary or abs(info["delta_pp"]) > abs(diff_summary[dim].get("max_delta_pp", 0)):
-                    diff_summary[dim] = {
-                        "max_diff_option": option,
-                        "max_delta_pp": info["delta_pp"],
-                        "direction": info["direction"],
-                        "significant": True,
-                        "group": group_col,
-                    }
+        for group_col, questions in groups.items():
+            for question, options in questions.items():
+                for option, info in options.items():
+                    if not info["significant"]:
+                        continue
+                    if dim not in diff_summary or abs(info["delta_pp"]) > abs(diff_summary[dim].get("max_delta_pp", 0)):
+                        diff_summary[dim] = {
+                            "question": question,
+                            "max_diff_option": option,
+                            "max_delta_pp": info["delta_pp"],
+                            "direction": info["direction"],
+                            "significant": True,
+                            "group": group_col,
+                        }
     return diff_summary
 
 
@@ -1091,48 +1099,25 @@ def _apply_significance_heatmap(ws, percent_df, col_labels, significance_matrix,
                 cell = ws.cell(row=r, column=col_idx)
                 cell.fill = make_fill(TR.INDIGO_ACCENT_BG)
 
-    # 建行映射：ws 行号 -> (dim, group_col_value, option)
-    # significance_matrix 结构: {dim: {group_col_value: {option: info}}}
-    # group_col_value 是去掉 \n 前缀的分组值（如 "男"），需与 col_labels 匹配
-    df_rows = list(percent_df.index)
-    ws_row_to_info = {}
-    for i, idx in enumerate(df_rows):
-        ws_row = start_row + i
-        if ws_row in total_rows:
+    amber_fill = make_fill(_DRIFT_BG)
+    for i, idx in enumerate(percent_df.index):
+        question, option = map(str, idx)
+        if option in ("总计", "合计", "Total"):
             continue
-        option = idx[1] if isinstance(idx, tuple) else idx
-        option_str = str(option)
-        if option_str in ("总计", "合计", "Total"):
-            continue
-        # 遍历 significance_matrix 找匹配的 (dim, group_col_value)
-        for dim, groups in significance_matrix.items():
-            for group_col_value, options in groups.items():
-                if option_str in options:
-                    ws_row_to_info[ws_row] = (dim, group_col_value, option_str)
-
-    # 着色
-    amber_fill = make_fill(_DRIFT_BG)  # FEF3C7
-    for ws_row, (dim, group_col_value, option) in ws_row_to_info.items():
-        info = significance_matrix[dim][group_col_value][option]
-        # 找 group_col_value 对应的列号
-        # col_labels 可能是 "Q33.性别\n男" 或裸 "男"——匹配 \n 后的部分
         for col_idx, label in enumerate(col_labels, start=n_index_cols + 1):
-            label_str = str(label)
-            label_value = label_str.split("\n")[-1] if "\n" in label_str else label_str
-            if label_value == group_col_value or label_str == group_col_value:
-                cell = ws.cell(row=ws_row, column=col_idx)
-                if info["significant"]:
-                    cell.fill = amber_fill
-                    current_val = cell.value
-                    if info["direction"] == "up":
-                        cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_UP_FONT)
-                        if current_val is not None and "↑" not in str(current_val):
-                            cell.value = f"{float(current_val):.1%} ↑"
-                    else:
-                        cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=_DOWN_FONT)
-                        if current_val is not None and "↓" not in str(current_val):
-                            cell.value = f"{float(current_val):.1%} ↓"
-                break
+            if str(label).endswith("\n总计"):
+                continue
+            dim = _extract_dim_from_label(label)
+            group_value = str(label).split("\n")[-1]
+            info = significance_matrix.get(dim, {}).get(group_value, {}).get(question, {}).get(option)
+            if info and info["significant"]:
+                cell = ws.cell(row=start_row + i, column=col_idx)
+                cell.fill = amber_fill
+                color = _UP_FONT if info["direction"] == "up" else _DOWN_FONT
+                cell.font = Font(name=Theme.FONT_NAME, size=10, bold=True, color=color)
+                cell.comment = Comment(
+                    f"{'↑' if info['direction'] == 'up' else '↓'} {info['delta_pp']:+.1f}pp; p={info['p']}; 分组 vs 其余有效样本", "survey-research"
+                )
 
     # DataBar：对所有非总计数据单元格加 indigo DataBar（刻度 0~1）
     non_total_rows = [r for r in range(start_row, max_row + 1) if r not in total_rows]
@@ -1511,7 +1496,7 @@ def _format_significance_sheet(ws, sig_df, col_dimensions, significance_matrix):
                 cell.border = border
                 # 查显著性信息定色（significance_matrix 用裸分组值作 key）
                 option = str(opt)
-                info = significance_matrix.get(dim_q, {}).get(short_val, {}).get(option)
+                info = significance_matrix.get(dim_q, {}).get(short_val, {}).get(str(q), {}).get(option)
                 if info and info["significant"]:
                     fill_hex, font_hex = _heat_color(info["delta_pp"])
                 else:
@@ -1526,7 +1511,7 @@ def _format_significance_sheet(ws, sig_df, col_dimensions, significance_matrix):
 
     # ---- 底部说明（3 行，合并跨越所有列）----
     notes = [
-        "检验方式：两比例 z 检验（pooled，双侧），H0: 分组占比 = 该维度总计占比",
+        "检验方式：两比例 z 检验（pooled，双侧），H0: 分组占比 = 该维度其余有效样本占比；delta_pp 描述分组减总计",
         "显著门槛：p<0.05",
         "↑ = 分组显著高于该维度总计，↓ = 显著低于，— = 无显著差异",
     ]

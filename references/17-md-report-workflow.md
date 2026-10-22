@@ -149,21 +149,11 @@
 - 不要凭题目名称推测——"频率"量表也可能是"过多/过少/合适"评估
 - 量表是评估型（过多/合适/过少）时，**用业务化的"过多 X% vs 过少 Y%"对比，不要用"净评价"**
 
-**标签反推（量化数据用数字编码，文本数据用文本标签）**：
-```python
-qd = pd.read_csv(quant_csv, encoding='utf-8-sig', low_memory=False)
-td = pd.read_excel(text_xlsx)
-q_vc = pd.to_numeric(qd[col], errors='coerce').value_counts().sort_index()
-t_vc = td[col].value_counts()
-pairs = {}; used = set()
-for val, cnt in q_vc.items():
-    best, best_diff = None, 1e9
-    for lab, t_cnt in t_vc.items():
-        if lab in used: continue
-        d = abs(int(cnt) - int(t_cnt))
-        if d < best_diff: best_diff = d; best = lab
-    if best: pairs[int(val)] = best; used.add(best)
-```
+**编码与标签映射（量化数据用数字编码，文本数据用文本标签）**：
+- 优先读取问卷选项定义或经用户确认的 `value_labels.json`。
+- 无选项定义时，仅可用稳定、唯一的答卷 ID 对齐同一批量化与文本数据，检查每个编码是否唯一对应一个标签。
+- 禁止按答案人数、频数接近程度或行顺序猜标签；同频选项无法据此区分。
+- 无法确认映射时保留原编码并明确标注，询问用户，不输出推测的语义结论。
 
 ### 步骤 6：撰写 Markdown 报告
 
