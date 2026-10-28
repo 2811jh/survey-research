@@ -776,7 +776,7 @@ def _write_detail_sheet(writer, question_data: dict, sheet_idx: int):
 
 def export_text_report(results: list, output_path: str,
                        file_path: str = None, sheet_name=0,
-                       sample_n: int = 300,
+                       sample_n: int = 1000,
                        attach_columns: list = None, attach_headers: list = None) -> dict:
     """
     将文本分析结果导出为专业 Excel 报告。
@@ -795,7 +795,7 @@ def export_text_report(results: list, output_path: str,
         output_path: 输出文件路径
         file_path: 原始数据文件路径（全量兜底关键词标注 + 逐条明细附加字段回填）
         sheet_name: 工作表名或编号（默认 0）
-        sample_n: 明细行数限制（默认 300，0=全量关键词兜底）
+        sample_n: 明细行数限制（默认 1000，0=全量关键词兜底）
         attach_columns: 需要回填到「逐条明细」的原始列 token 列表（如 uid / 引擎版本 / 满意度）
         attach_headers: 与 attach_columns 一一对应的中文表头（可选，缺省自动命名）
 
@@ -943,8 +943,8 @@ def main():
     parser.add_argument("--file_path", default=None,
                         help="原始数据文件路径（可选）。当 details 为空时，从此文件提取文本并自动标注")
     parser.add_argument("--sheet_name", default="0", help="工作表名或编号（默认 0）")
-    parser.add_argument("--sample_n", type=int, default=300,
-                        help="逐条明细行数限制（默认 300，0=全量标注并重新统计维度）")
+    parser.add_argument("--sample_n", type=int, default=1000,
+                        help="逐条明细行数限制（默认 1000，0=全量标注并重新统计维度）")
     parser.add_argument("--attach_columns", nargs="*", default=None,
                         help="回填到逐条明细的原始列名/关键词（支持模糊匹配），如 Y1.uiduid Y2.engine_verengine_ver 'Q1.整体满意度'")
     parser.add_argument("--attach_headers", nargs="*", default=None,

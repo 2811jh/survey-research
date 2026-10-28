@@ -103,7 +103,7 @@ def _is_invalid_text(text: str) -> bool:
     return False
 
 
-def clean_column_texts(df: pd.DataFrame, column: str, sample_n: int = 0, sample_seed: int = 42) -> dict:
+def clean_column_texts(df: pd.DataFrame, column: str, sample_n: int = 1000, sample_seed: int = 42) -> dict:
     """
     对指定列做文本清洗。
 
@@ -230,7 +230,7 @@ def main():
     parser.add_argument("--column", default=None, help="要提取的列名（不指定则用 --detect 模式）")
     parser.add_argument("--detect", action="store_true", help="自动检测文本题候选列")
     parser.add_argument("--sheet_name", default="0", help="工作表名或编号")
-    parser.add_argument("--sample_n", type=int, default=0, help="抽样数量（0=全部）")
+    parser.add_argument("--sample_n", type=int, default=1000, help="抽样数量（默认最多 1000 条，不足则全取；0=全部）")
     parser.add_argument("--sample_seed", type=int, default=42, help="随机种子")
     args = parser.parse_args()
 
