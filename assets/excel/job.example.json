@@ -1,0 +1,13 @@
+{
+  "config": "minecraft-monthly.json",
+  "inputs": [
+    {"month": "2026-10", "path": "data/october.csv", "cleaning_note": "填写本月实际清洗口径"},
+    {"month": "2026-11", "path": "data/november.csv", "cleaning_note": "填写本月实际清洗口径"}
+  ],
+  "output": "月度汇总.xlsx",
+  "template": "原版模板.xlsx",
+  "bindings": [
+    {"sheet": "--满意度 & NPS--", "metric": "performance", "label_column": "B", "label": "基础性能", "row_range": [112, 118], "header_row": 111, "column": "C", "month": "2026-11"},
+    {"sheet": "--满意度 & NPS--", "metric": "mod_payment", "label_column": "B", "label": "模组付费体验", "row_range": [132, 133], "header_row": 131, "column": "C", "month": "2026-11"}
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "我的世界月度满意度（需先核对编码与问卷题目）",
+  "response_id": {"column": "序号", "regex": "^\\d+(?:\\.0)?$"},
+  "metrics": [
+    {"id":"overall","label":"整体满意度","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["就目前的体验而言","整体满意度评价如何"]}},
+    {"id":"nps","label":"NPS","kind":"nps","direction":"higher","allowed":[0,1,2,3,4,5,6,7,8,9,10],"match":{"contains":["推荐给其他人","0分代表"]}},
+    {"id":"gameplay","label":"玩法乐趣","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["体验感受如何",":玩法体验"]}},
+    {"id":"payment","label":"付费体验","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["体验感受如何",":付费体验"]}},
+    {"id":"social","label":"社交体验","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["体验感受如何",":社交体验"]}},
+    {"id":"update","label":"本月更新内容","kind":"mean","direction":"higher","optional":true,"allowed":[1,2,3,4,5],"match":{"contains":["体验感受如何",":本月更新内容"]}},
+    {"id":"ugc","label":"UGC玩法","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["体验感受如何",":UGC玩法"]}},
+    {"id":"performance","label":"基础性能","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["体验感受如何",":基础性能"]}},
+    {"id":"bug","label":"BUG","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["满意度评价如何"],"suffix":":BUG"}},
+    {"id":"lag","label":"卡顿/延迟","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["满意度评价如何"],"suffix":":卡顿/延迟"}},
+    {"id":"heat","label":"发热","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["满意度评价如何"],"suffix":":发热"}},
+    {"id":"crash","label":"闪退","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["满意度评价如何"],"suffix":":闪退"}},
+    {"id":"art","label":"美术表现","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["整体满意度评价是"],"regex":"美术表现|美术画面相关"}},
+    {"id":"ui","label":"界面使用","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["界面使用的满意度是"]}},
+    {"id":"mod_richness","label":"模组丰富度","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["模组相关体验的满意度评价如何",":模组丰富度"]}},
+    {"id":"mod_play","label":"模组游玩体验","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["模组相关体验的满意度评价如何",":模组游玩体验"]}},
+    {"id":"mod_support","label":"模组售后反馈体验","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["模组相关体验的满意度评价如何",":模组售后反馈体验"]}},
+    {"id":"mod_payment","label":"模组付费体验","kind":"mean","direction":"higher","allowed":[1,2,3,4,5],"match":{"contains":["模组相关体验的满意度评价如何",":模组付费体验"]}},
+    {"id":"performance_issue","label":"不满原因：游戏性能不好","kind":"proportion","direction":"lower","selected":[1],"unselected":[],"match":{"contains":["不太满意的主要原因是？:游戏性能不好"]},"denominator":{"mode":"answered","match":{"contains":["不太满意的主要原因是？:"],"exclude":["输入文本"]}}},
+    {"id":"benefit_issue","label":"不满原因：福利少","kind":"proportion","direction":"lower","selected":[1],"unselected":[],"match":{"contains":["不太满意的主要原因是？:福利少"]},"denominator":{"mode":"answered","match":{"contains":["不太满意的主要原因是？:"],"exclude":["输入文本"]}}}
+  ],
+  "groups": [
+    {"id":"male","label":"男","match":{"contains":["请问您的性别是？"],"exclude":[":"]},"allowed":[1,2,3],"values":[1]},
+    {"id":"female","label":"女","match":{"contains":["请问您的性别是？"],"exclude":[":"]},"allowed":[1,2,3],"values":[2]},
+    {"id":"primary","label":"小学生","match":{"contains":["请问您的职业是？"],"exclude":[":"]},"allowed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"values":[1]},
+    {"id":"middle","label":"初中生","match":{"contains":["请问您的职业是？"],"exclude":[":"]},"allowed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"values":[2]},
+    {"id":"high","label":"高中生","match":{"contains":["请问您的职业是？"],"exclude":[":"]},"allowed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"values":[3]},
+    {"id":"college","label":"大学生","match":{"contains":["请问您的职业是？"],"exclude":[":"]},"allowed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"values":[4]},
+    {"id":"working","label":"工作人群","match":{"contains":["请问您的职业是？"],"exclude":[":"]},"allowed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"values":[5,6,7,8,9,10,11,12,13]}
+  ]
+}
