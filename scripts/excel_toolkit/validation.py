@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 import openpyxl
+import pandas as pd
 
 from .metrics import compute_month, load_frame, validate_months
 from .template import apply_template, plan_template, read_parts, sync_chart_caches
@@ -40,14 +41,57 @@ def ensure_unlocked(path):
 
 def calculate(job):
     """校验输入年月并返回逐月完整计算及可预览映射。"""
-    validate_months([x['month'] for x in job['inputs']])
+    raw_inputs = job.get('inputs', [])
+    if raw_inputs:
+        validate_months([x['month'] for x in raw_inputs])
     results, sources = {}, []
-    for entry in job['inputs']:
+    for entry in raw_inputs:
         path = Path(entry['path']).resolve()
         result = compute_month(load_frame(path, entry.get('sheet', 0)), job['config'])
         result['cleaning_note'] = entry.get('cleaning_note', '未声明清洗口径，月间比较需谨慎')
         results[entry['month']] = result
         sources.append({'month': entry['month'], 'path': str(path), 'sha256': digest(path)})
+    from .routing import validate_summary_record
+    records = list(job.get('summary_records', []))
+    for source in job.get('summary_inputs', []):
+        path = Path(source['path']).resolve()
+        frame = load_frame(path, source.get('sheet', 0))
+        columns = source['columns']
+        required = ['month','metric','value','kind']
+        if not all(k in columns for k in required):
+            raise ValueError('汇总输入需明确month/metric/value/kind列映射')
+        for _, row in frame.iterrows():
+            record = {key: (None if pd.isna(row[col]) else row[col]) for key,col in columns.items()}
+            if record.get('n') is not None:
+                if float(record['n']) != int(record['n']):raise ValueError('汇总分母不是整数')
+                record['n'] = int(record['n'])
+            records.append(record)
+        sources.append({'type':'summary','path':str(path),'sha256':digest(path)})
+    metric_config = {x['id']:x for x in job['config']['metrics']}
+    seen = set()
+    for record in records:
+        record = validate_summary_record(record)
+        month, mid = record['month'], record['metric']
+        validate_months([month])
+        group = record.get('group','全体')
+        key = month,mid,group
+        if key in seen:raise ValueError('同月同指标同人群汇总重复，禁止平均均值')
+        seen.add(key)
+        if mid not in metric_config or record['kind'] != metric_config[mid]['kind']:
+            raise ValueError('汇总统计类型/指标未匹配配置')
+        if month in results and mid in results[month]['metrics'] and group in results[month]['metrics'][mid]:
+            raise ValueError('原始答卷与已有汇总存在同月同指标冲突，需明确选用来源')
+        result = results.setdefault(month, {'rows':None,'input_rows':None,'excluded_rows':0,'mapping':{},'metrics':{},'source_type':'summary'})
+        result['mapping'][mid] = '已有汇总继承（不恢复缺失精度/个人分布）'
+        result['metrics'].setdefault(mid,{})[group] = {'value':record['value'],'n':record.get('n'),
+            'group_rows':None,'missing':None,'denominator':'inherited_summary'}
+    validate_months(list(results))
+    for month,result in results.items():
+        for item in job['config']['metrics']:
+            result['mapping'].setdefault(item['id'],'材料未提供，不推测')
+            for group in ['全体']+[g['label'] for g in job['config'].get('groups',[])]:
+                result['metrics'].setdefault(item['id'],{}).setdefault(group,{
+                    'value':None,'n':None,'group_rows':None,'missing':None,'denominator':'not_available'})
     return results, sources
 
 
@@ -92,7 +136,7 @@ def build(job, overwrite=False):
     ensure_unlocked(output)
     if output.exists() and not overwrite:
         raise FileExistsError('默认另存；覆盖需明确--overwrite')
-    sources = {Path(x['path']).resolve() for x in job['inputs']}
+    sources = {Path(x['path']).resolve() for x in job.get('inputs', []) + job.get('summary_inputs', [])}
     if output in sources:
         raise ValueError('禁止覆盖原始答卷')
     template = Path(job['template']).resolve() if job.get('template') else None
@@ -103,7 +147,12 @@ def build(job, overwrite=False):
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     with tempfile.TemporaryDirectory(prefix='.survey_excel_', dir=output.parent) as temp:
         generated = Path(temp) / 'generated.xlsx'
-        manifest = render_new(results, job['config'], generated)
+        include_detail = job.get('include_detail_sheets', not template)
+        if include_detail:
+            manifest = render_new(results, job['config'], generated)
+        else:
+            generated = None
+            manifest = []
         candidate = Path(temp) / 'verified.xlsx'
         preservation = {'preserved_parts': 0, 'changed_parts': []}
         if template:

@@ -9,6 +9,7 @@ def package(output):
     root = Path(__file__).resolve().parents[1]
     files = [root / 'SKILL.md', root / 'references/19-excel-workflow.md',
              root / 'scripts/survey_excel.py', root / 'scripts/package_excel_toolkit.py',
+             root / 'tests/test_survey_excel_routing.py',
              root / 'assets/excel/minecraft-monthly.json', root / 'assets/excel/job.example.json',
              root / 'tests/test_survey_excel.py', root / 'tests/test_survey_excel_template.py',
              root / 'tests/test_survey_excel_package.py']

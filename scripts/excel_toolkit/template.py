@@ -203,7 +203,8 @@ def write_cell(root, address, value):
 
 def apply_template(template, plan, generated, output, results):
     """追加完整月度明细，原模板历史及未知部件保留。"""
-    base, donor = read_parts(template), read_parts(generated)
+    base = read_parts(template)
+    donor = read_parts(generated) if generated else None
     original = dict(base)
     paths = sheet_paths(base)
     changes = {}
@@ -228,6 +229,13 @@ def apply_template(template, plan, generated, output, results):
     base['xl/styles.xml'] = encoded(styles)
     for path, root in changes.items():
         base[path] = encoded(root)
+    if donor is None:
+        base = sync_chart_caches(base)
+        with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name, data in base.items():
+                z.writestr(name, data)
+        return {'preserved_parts': sum(base.get(k) == v for k, v in original.items()),
+                'changed_parts': [k for k,v in original.items() if base.get(k) != v]}
     offsets = merge_styles(base, donor)
     book = xml(base['xl/workbook.xml'])
     rels = xml(base['xl/_rels/workbook.xml.rels'])

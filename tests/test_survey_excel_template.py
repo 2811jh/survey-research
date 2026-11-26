@@ -24,7 +24,7 @@ class DeliveryTests(unittest.TestCase):
         self.base = Path(self.temp.name)
         source = self.base / 'answers.csv'
         frame().to_csv(source, index=False, encoding='utf-8-sig')
-        self.job = {'config': config(), 'inputs': [{'month': '2026-07', 'path': str(source)}],
+        self.job = {'config': config(), 'include_detail_sheets': True, 'inputs': [{'month': '2026-07', 'path': str(source)}],
                     'output': str(self.base / 'result.xlsx')}
 
     def test_new_report_precision_month_text_and_audit(self):
@@ -182,6 +182,25 @@ class DeliveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '历史月份'):
             self.api.build(self.job)
         self.assertFalse(Path(self.job['output']).exists())
+
+    def test_template_default_only_updates_original_sheets(self):
+        self.template()
+        self.job.pop('include_detail_sheets')
+        self.api.build(self.job)
+        w = openpyxl.load_workbook(self.job['output'])
+        self.assertEqual(w.sheetnames, ['原表'])
+        self.assertAlmostEqual(w['原表']['C2'].value,8/3)
+
+    def test_summary_only_uses_existing_statistics_not_raw_calculator(self):
+        self.template()
+        self.job.pop('include_detail_sheets')
+        self.job['inputs'] = []
+        self.job['summary_records'] = [{'month':'2026-07','metric':'overall','group':'全体',
+                                        'kind':'mean','value':4.125,'n':80}]
+        self.api.build(self.job)
+        w = openpyxl.load_workbook(self.job['output'])
+        self.assertEqual(w.sheetnames,['原表'])
+        self.assertEqual(w['原表']['C2'].value,4.125)
 
     def test_repeat_template_run_preserves_history_and_rule_count(self):
         self.template()
